@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'">
+  <title>paint-room-dj</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>paint-room-dj</h1>
+
+  <section id="file-section">
+    <h2>File Access</h2>
+    <button id="btn-open-file">Open File</button>
+    <pre id="file-output">(no file loaded)</pre>
+  </section>
+
+  <section id="midi-section">
+    <h2>MIDI</h2>
+    <button id="btn-midi-connect">Connect MIDI</button>
+    <pre id="midi-output">(not connected)</pre>
+  </section>
+
+  <section id="audio-section">
+    <h2>Audio Playback</h2>
+    <button id="btn-load-audio">Load Audio File</button>
+    <button id="btn-play-audio" disabled>Play</button>
+    <button id="btn-stop-audio" disabled>Stop</button>
+    <span id="audio-status">(no audio loaded)</span>
+  </section>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
