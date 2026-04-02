@@ -183,6 +183,7 @@ function buildUI() {
 
 const NOTE_OFFSET = 36;
 const noteToSlot = new Map();
+const slotToNote = new Map();
 
 function buildNoteMap() {
   for (let g = 0; g < NUM_GRIDS; g++) {
@@ -191,6 +192,7 @@ function buildNoteMap() {
         const slotIndex = g * GRID_SIZE + r * 4 + c;
         const note = (g * 16) + NOTE_OFFSET + (3 - r) * 4 + c;
         noteToSlot.set(note, slotIndex);
+        slotToNote.set(slotIndex, note);
       }
     }
   }
@@ -352,6 +354,10 @@ document.getElementById('btn-kill-audio').addEventListener('click', () => {
   killAllAudio();
 });
 
+document.getElementById('btn-send-colors').addEventListener('click', () => {
+  sendColors();
+});
+
 // === MIDI ===
 
 const midiStatusDot = document.getElementById('midi-status-dot');
@@ -361,7 +367,31 @@ const midiLog = document.getElementById('midi-log');
 
 let midiAccess = null;
 let activeInput = null;
+let activeOutput = null;
 const MAX_LOG_LINES = 50;
+
+// MF3D LED color velocities (note-on channel 3)
+const COLOR_GREEN = 66;  // song
+const COLOR_BLUE = 78;   // oneshot
+
+function sendColors() {
+  if (!activeOutput) {
+    midiLogAppend('no MIDI output connected');
+    return;
+  }
+  let count = 0;
+  for (let i = 0; i < TOTAL_SLOTS; i++) {
+    const note = slotToNote.get(i);
+    if (note === undefined) continue;
+    const slot = slots[i];
+    if (!slot.file) continue;
+    const velocity = slot.mode === 'song' ? COLOR_GREEN : COLOR_BLUE;
+    // note-on on channel 1 (status 0x90)
+    activeOutput.send([0x90, note, velocity]);
+    count++;
+  }
+  midiLogAppend('sent ' + count + ' LED colors');
+}
 
 function midiLogAppend(text) {
   midiLog.textContent += text + '\n';
@@ -377,6 +407,7 @@ function disconnectMidi() {
     activeInput.onmidimessage = null;
     activeInput = null;
   }
+  activeOutput = null;
   midiStatusDot.classList.remove('connected');
   midiDeviceName.textContent = '';
 }
@@ -435,6 +466,13 @@ function tryAutoConnect() {
     if (input.name && input.name.includes(MIDI_AUTO_CONNECT_NAME)) {
       connectToInput(input);
       midiDeviceSelect.value = input.id;
+      // also grab the matching output
+      for (const output of midiAccess.outputs.values()) {
+        if (output.name && output.name.includes(MIDI_AUTO_CONNECT_NAME)) {
+          activeOutput = output;
+          break;
+        }
+      }
       return;
     }
   }
@@ -449,6 +487,14 @@ midiDeviceSelect.addEventListener('change', () => {
   const input = midiAccess.inputs.get(id);
   if (input) {
     connectToInput(input);
+    // try to find a matching output by name
+    activeOutput = null;
+    for (const output of midiAccess.outputs.values()) {
+      if (output.name && input.name && output.name.includes(input.name)) {
+        activeOutput = output;
+        break;
+      }
+    }
   }
 });
 
