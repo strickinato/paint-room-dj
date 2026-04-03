@@ -162,6 +162,7 @@ body {
   background: #393;
 }
 
+#audio-device-select,
 #midi-device-select {
   font-size: 13px;
   margin: 4px 0;

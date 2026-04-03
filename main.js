@@ -23,7 +23,7 @@ app.on('ready', () => {
   // Grant MIDI permission — Chromium requires explicit permission in Electron
   session.defaultSession.setPermissionRequestHandler(
     (webContents, permission, callback) => {
-      const allowed = ['midi', 'midiSysex'];
+      const allowed = ['midi', 'midiSysex', 'media', 'audioCapture', 'speaker-selection'];
       callback(allowed.includes(permission));
     }
   );

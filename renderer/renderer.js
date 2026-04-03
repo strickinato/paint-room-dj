@@ -4,7 +4,7 @@ const NUM_GRIDS = 4;
 const GRID_SIZE = 16; // 4x4
 const TOTAL_SLOTS = NUM_GRIDS * GRID_SIZE;
 
-// Each slot: { mode: 'song'|'oneshot', file: null | { path, onDisk, buffer } }
+// Each slot: { mode: 'song'|'oneshot'|'stop', file: null | { path, onDisk, buffer } }
 const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
   mode: 'song',
   file: null
@@ -37,6 +37,7 @@ async function loadSlotAudio(i) {
     slot.file.buffer = null;
   }
   renderSlot(i);
+  sendColors();
 }
 
 async function relocateSlotFile(i) {
@@ -126,8 +127,12 @@ function buildUI() {
         const opt2 = document.createElement('option');
         opt2.value = 'oneshot';
         opt2.textContent = 'oneshot';
+        const opt3 = document.createElement('option');
+        opt3.value = 'stop';
+        opt3.textContent = 'stop';
         select.appendChild(opt1);
         select.appendChild(opt2);
+        select.appendChild(opt3);
         select.addEventListener('change', () => {
           slots[i].mode = select.value;
           autosave();
@@ -292,8 +297,10 @@ function handleMidiNoteOn(note) {
   const slot = slots[slotIndex];
   if (slot.mode === 'song') {
     playSong(slotIndex);
-  } else {
+  } else if (slot.mode === 'oneshot') {
     playOneshot(slotIndex);
+  } else if (slot.mode === 'stop') {
+    killAllAudio();
   }
 }
 
@@ -334,10 +341,12 @@ async function restoreState() {
     }
     renderSlot(i);
   }
+  sendColors();
 }
 
 function autosave() {
   saveState();
+  sendColors();
 }
 
 // === RELOAD ALL ===
@@ -370,9 +379,10 @@ let activeInput = null;
 let activeOutput = null;
 const MAX_LOG_LINES = 50;
 
-// MF3D LED color velocities (note-on channel 3)
+// MF3D LED color velocities (note-on channel 1)
 const COLOR_GREEN = 66;  // song
 const COLOR_BLUE = 78;   // oneshot
+const COLOR_RED = 13;    // stop
 
 function sendColors() {
   if (!activeOutput) {
@@ -384,8 +394,16 @@ function sendColors() {
     const note = slotToNote.get(i);
     if (note === undefined) continue;
     const slot = slots[i];
-    if (!slot.file) continue;
-    const velocity = slot.mode === 'song' ? COLOR_GREEN : COLOR_BLUE;
+    let velocity;
+    if (slot.mode === 'stop') {
+      velocity = COLOR_RED;
+    } else if (!slot.file) {
+      velocity = 0;
+    } else if (slot.mode === 'song') {
+      velocity = COLOR_GREEN;
+    } else {
+      velocity = COLOR_BLUE;
+    }
     // note-on on channel 1 (status 0x90)
     activeOutput.send([0x90, note, velocity]);
     count++;
@@ -520,6 +538,40 @@ async function initMidi() {
   }
 }
 
+// === AUDIO OUTPUT DEVICE ===
+
+const audioDeviceSelect = document.getElementById('audio-device-select');
+
+async function populateAudioDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+  const currentValue = audioDeviceSelect.value;
+  while (audioDeviceSelect.options.length > 1) {
+    audioDeviceSelect.remove(1);
+  }
+
+  for (const device of outputs) {
+    const opt = document.createElement('option');
+    opt.value = device.deviceId;
+    opt.textContent = device.label || device.deviceId;
+    audioDeviceSelect.appendChild(opt);
+  }
+
+  if (currentValue) {
+    audioDeviceSelect.value = currentValue;
+  }
+}
+
+audioDeviceSelect.addEventListener('change', async () => {
+  const deviceId = audioDeviceSelect.value;
+  try {
+    await audioCtx.setSinkId(deviceId || '');
+  } catch (err) {
+    console.error('Failed to set audio output:', err);
+  }
+});
+
 // === INIT ===
 
 async function init() {
@@ -527,6 +579,8 @@ async function init() {
   buildNoteMap();
   await restoreState();
   initMidi();
+  populateAudioDevices();
+  navigator.mediaDevices.addEventListener('devicechange', populateAudioDevices);
 }
 
 init();
