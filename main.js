@@ -31,21 +31,90 @@ app.on('ready', () => {
   createWindow();
 });
 
-const STATE_FILE = path.join(app.getPath('userData'), 'slot-state.json');
+const PREFS_FILE = path.join(app.getPath('userData'), 'prefs.json');
 
 // --- IPC Handlers ---
 
-ipcMain.handle('state:load', async () => {
+// Project directory prefs
+ipcMain.handle('prefs:getProjectDir', async () => {
   try {
-    const data = await fs.readFile(STATE_FILE, 'utf-8');
+    const data = await fs.readFile(PREFS_FILE, 'utf-8');
+    const prefs = JSON.parse(data);
+    if (prefs.projectDir) {
+      await fs.access(prefs.projectDir);
+      return prefs.projectDir;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('prefs:setProjectDir', async (_event, dir) => {
+  let prefs = {};
+  try {
+    const data = await fs.readFile(PREFS_FILE, 'utf-8');
+    prefs = JSON.parse(data);
+  } catch { /* fresh prefs */ }
+  prefs.projectDir = dir;
+  await fs.writeFile(PREFS_FILE, JSON.stringify(prefs, null, 2), 'utf-8');
+});
+
+ipcMain.handle('dialog:openDirectory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+// State load/save from project directory
+ipcMain.handle('state:load', async (_event, projectDir) => {
+  try {
+    const filePath = path.join(projectDir, 'data.json');
+    const data = await fs.readFile(filePath, 'utf-8');
     return JSON.parse(data);
   } catch {
     return null;
   }
 });
 
-ipcMain.handle('state:save', async (_event, state) => {
-  await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+ipcMain.handle('state:save', async (_event, projectDir, state) => {
+  const filePath = path.join(projectDir, 'data.json');
+  await fs.writeFile(filePath, JSON.stringify(state, null, 2), 'utf-8');
+});
+
+// Path utilities
+ipcMain.handle('path:resolve', (_event, projectDir, relativePath) => {
+  return path.resolve(projectDir, relativePath);
+});
+
+ipcMain.handle('path:relative', (_event, projectDir, absolutePath) => {
+  return path.relative(projectDir, absolutePath);
+});
+
+// Copy file into project directory
+ipcMain.handle('fs:copyIntoProject', async (_event, projectDir, sourceAbsPath) => {
+  const filename = path.basename(sourceAbsPath);
+  const dest = path.join(projectDir, filename);
+  // avoid overwriting by appending a number if needed
+  let finalDest = dest;
+  let counter = 1;
+  while (true) {
+    try {
+      await fs.access(finalDest);
+      // file exists, try next name
+      const ext = path.extname(filename);
+      const base = path.basename(filename, ext);
+      finalDest = path.join(projectDir, `${base}_${counter}${ext}`);
+      counter++;
+    } catch {
+      // doesn't exist, good to use
+      break;
+    }
+  }
+  await fs.copyFile(sourceAbsPath, finalDest);
+  return path.relative(projectDir, finalDest);
 });
 
 ipcMain.handle('dialog:openFile', async (_event, options) => {

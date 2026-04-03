@@ -5,10 +5,14 @@ const GRID_SIZE = 16; // 4x4
 const TOTAL_SLOTS = NUM_GRIDS * GRID_SIZE;
 
 // Each slot: { mode: 'song'|'oneshot'|'stop', file: null | { path, onDisk, buffer } }
+// At runtime, file.path is always absolute.
+// In data.json, file.path is relative to the project directory.
 const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
   mode: 'song',
   file: null
 }));
+
+let projectDir = null;
 
 // === AUDIO ===
 
@@ -19,9 +23,20 @@ const activeSources = new Map(); // slotIndex -> AudioBufferSourceNode
 
 const gridsContainer = document.getElementById('grids');
 const slotElements = []; // parallel array of DOM elements
+const projectDirName = document.getElementById('project-dir-name');
 
 function basename(p) {
   return p.split('/').pop().split('\\').pop();
+}
+
+function updateProjectUI() {
+  if (projectDir) {
+    projectDirName.textContent = basename(projectDir);
+    projectDirName.title = projectDir;
+  } else {
+    projectDirName.textContent = '(none)';
+    projectDirName.title = '';
+  }
 }
 
 async function loadSlotAudio(i) {
@@ -45,8 +60,11 @@ async function relocateSlotFile(i) {
     filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'flac', 'aac'] }]
   });
   if (!filePath) return;
-  const exists = await window.electronAPI.fileExists(filePath);
-  slots[i].file = { path: filePath, onDisk: exists, buffer: null };
+  // copy into project dir
+  const relPath = await window.electronAPI.copyIntoProject(projectDir, filePath);
+  const absPath = await window.electronAPI.resolvePath(projectDir, relPath);
+  const exists = await window.electronAPI.fileExists(absPath);
+  slots[i].file = { path: absPath, onDisk: exists, buffer: null };
   renderSlot(i);
   autosave();
 }
@@ -156,18 +174,20 @@ function buildUI() {
 
           const file = e.dataTransfer.files[0];
           if (!file) return;
-          const filePath = window.electronAPI.getFilePath(file);
-          if (!filePath) return;
+          const sourcePath = window.electronAPI.getFilePath(file);
+          if (!sourcePath) return;
 
-          const exists = await window.electronAPI.fileExists(filePath);
+          // copy file into project directory
+          const relPath = await window.electronAPI.copyIntoProject(projectDir, sourcePath);
+          const absPath = await window.electronAPI.resolvePath(projectDir, relPath);
           slots[i].file = {
-            path: filePath,
-            onDisk: exists,
+            path: absPath,
+            onDisk: true,
             buffer: null
           };
           renderSlot(i);
           autosave();
-          if (exists) loadSlotAudio(i);
+          loadSlotAudio(i);
         });
 
         slotElements.push(el);
@@ -316,19 +336,29 @@ function handleMidiNoteOff(note) {
 
 // === STATE PERSISTENCE ===
 
-function serializeState() {
-  return slots.map((slot, i) => {
-    if (!slot.file) return { mode: slot.mode, file: null };
-    return { mode: slot.mode, file: { path: slot.file.path } };
-  });
+async function serializeState() {
+  const result = [];
+  for (let i = 0; i < TOTAL_SLOTS; i++) {
+    const slot = slots[i];
+    if (!slot.file) {
+      result.push({ mode: slot.mode, file: null });
+    } else {
+      const relPath = await window.electronAPI.relativePath(projectDir, slot.file.path);
+      result.push({ mode: slot.mode, file: { path: relPath } });
+    }
+  }
+  return result;
 }
 
 async function saveState() {
-  await window.electronAPI.saveState(serializeState());
+  if (!projectDir) return;
+  const state = await serializeState();
+  await window.electronAPI.saveState(projectDir, state);
 }
 
 async function restoreState() {
-  const saved = await window.electronAPI.loadState();
+  if (!projectDir) return;
+  const saved = await window.electronAPI.loadState(projectDir);
   if (!saved || !Array.isArray(saved)) return;
 
   for (let i = 0; i < Math.min(saved.length, TOTAL_SLOTS); i++) {
@@ -336,8 +366,9 @@ async function restoreState() {
     if (!entry) continue;
     slots[i].mode = entry.mode || 'song';
     if (entry.file && entry.file.path) {
-      const exists = await window.electronAPI.fileExists(entry.file.path);
-      slots[i].file = { path: entry.file.path, onDisk: exists, buffer: null };
+      const absPath = await window.electronAPI.resolvePath(projectDir, entry.file.path);
+      const exists = await window.electronAPI.fileExists(absPath);
+      slots[i].file = { path: absPath, onDisk: exists, buffer: null };
     }
     renderSlot(i);
   }
@@ -348,6 +379,39 @@ function autosave() {
   saveState();
   sendColors();
 }
+
+// === PROJECT DIRECTORY ===
+
+async function pickProjectDir() {
+  const dir = await window.electronAPI.openDirectoryDialog();
+  if (!dir) return null;
+  await window.electronAPI.setProjectDir(dir);
+  return dir;
+}
+
+function clearAllSlots() {
+  killAllAudio();
+  for (let i = 0; i < TOTAL_SLOTS; i++) {
+    slots[i].mode = 'song';
+    slots[i].file = null;
+    renderSlot(i);
+  }
+  sendColors();
+}
+
+async function switchProject(dir) {
+  clearAllSlots();
+  projectDir = dir;
+  updateProjectUI();
+  await restoreState();
+}
+
+document.getElementById('btn-change-project').addEventListener('click', async () => {
+  const dir = await pickProjectDir();
+  if (dir) {
+    await switchProject(dir);
+  }
+});
 
 // === RELOAD ALL ===
 
@@ -577,7 +641,18 @@ audioDeviceSelect.addEventListener('change', async () => {
 async function init() {
   buildUI();
   buildNoteMap();
-  await restoreState();
+
+  // load or pick project directory
+  projectDir = await window.electronAPI.getProjectDir();
+  if (!projectDir) {
+    projectDir = await pickProjectDir();
+  }
+  updateProjectUI();
+
+  if (projectDir) {
+    await restoreState();
+  }
+
   initMidi();
   populateAudioDevices();
   navigator.mediaDevices.addEventListener('devicechange', populateAudioDevices);
