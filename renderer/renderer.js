@@ -91,6 +91,12 @@ function renderSlot(i) {
   const slot = slots[i];
   const select = el.querySelector('select');
 
+  // update mode class — only show border if slot has a file or is a stop slot
+  el.classList.remove('mode-song', 'mode-oneshot', 'mode-stop');
+  if (slot.file || slot.mode === 'stop') {
+    el.classList.add('mode-' + slot.mode);
+  }
+
   // remove old content except the select
   const info = el.querySelector('.slot-info');
   if (info) info.remove();
@@ -500,6 +506,7 @@ async function switchProject(dir) {
   updateProjectUI();
   await restoreState();
   refreshMediaList();
+  window.electronAPI.watchDir(projectDir);
 }
 
 document.getElementById('btn-change-project').addEventListener('click', async () => {
@@ -738,6 +745,9 @@ async function init() {
   buildUI();
   buildNoteMap();
 
+  // listen for directory changes from file watcher
+  window.electronAPI.onDirChanged(() => refreshMediaList());
+
   // load or pick project directory
   projectDir = await window.electronAPI.getProjectDir();
   if (!projectDir) {
@@ -748,6 +758,13 @@ async function init() {
   if (projectDir) {
     await restoreState();
     refreshMediaList();
+    window.electronAPI.watchDir(projectDir);
+    // auto-load all slots that have files on disk
+    for (let i = 0; i < TOTAL_SLOTS; i++) {
+      if (slots[i].file && slots[i].file.onDisk && !slots[i].file.buffer) {
+        loadSlotAudio(i);
+      }
+    }
   }
 
   initMidi();

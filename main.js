@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 
 let mainWindow;
 
@@ -151,6 +152,27 @@ ipcMain.handle('fs:fileExists', async (_event, filePath) => {
   } catch {
     return false;
   }
+});
+
+// Directory watcher — debounced, sends event to renderer on changes
+let dirWatcher = null;
+let debounceTimer = null;
+
+ipcMain.handle('fs:watchDir', (_event, dir) => {
+  // stop any existing watcher
+  if (dirWatcher) { dirWatcher.close(); dirWatcher = null; }
+  if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+  if (!dir) return;
+  try {
+    dirWatcher = fsSync.watch(dir, () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('fs:dirChanged');
+        }
+      }, 500);
+    });
+  } catch { /* directory may not exist */ }
 });
 
 app.on('window-all-closed', () => {

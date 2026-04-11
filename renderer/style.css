@@ -84,6 +84,18 @@ body {
   background-color: #cef !important;
 }
 
+.slot.mode-song {
+  box-shadow: inset 0 0 0 2px #8c8;
+}
+
+.slot.mode-oneshot {
+  box-shadow: inset 0 0 0 2px #8af;
+}
+
+.slot.mode-stop {
+  box-shadow: inset 0 0 0 2px #e88;
+}
+
 .slot select {
   position: absolute;
   bottom: 1px;

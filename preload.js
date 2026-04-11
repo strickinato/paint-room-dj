@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   relativePath: (projectDir, absPath) => ipcRenderer.invoke('path:relative', projectDir, absPath),
   loadState: (projectDir) => ipcRenderer.invoke('state:load', projectDir),
   saveState: (projectDir, state) => ipcRenderer.invoke('state:save', projectDir, state),
+  watchDir: (dir) => ipcRenderer.invoke('fs:watchDir', dir),
+  onDirChanged: (callback) => ipcRenderer.on('fs:dirChanged', callback),
 });
