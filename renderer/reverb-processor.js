@@ -7,15 +7,20 @@ class ReverbProcessor extends AudioWorkletProcessor {
   _initChannel() {
     const sr = sampleRate;
     return {
+      // Long, spread-out comb filters for cathedral-sized space
       combs: [
-        this._makeComb(Math.round(sr * 0.0557), 0.90),
-        this._makeComb(Math.round(sr * 0.0693), 0.88),
-        this._makeComb(Math.round(sr * 0.0812), 0.86),
-        this._makeComb(Math.round(sr * 0.0907), 0.84),
+        this._makeComb(Math.round(sr * 0.1517), 0.95),
+        this._makeComb(Math.round(sr * 0.1757), 0.94),
+        this._makeComb(Math.round(sr * 0.2013), 0.93),
+        this._makeComb(Math.round(sr * 0.2287), 0.92),
+        this._makeComb(Math.round(sr * 0.2531), 0.91),
+        this._makeComb(Math.round(sr * 0.2803), 0.90),
       ],
+      // More allpasses for denser diffusion
       allpasses: [
+        this._makeAllpass(Math.round(sr * 0.025)),
         this._makeAllpass(Math.round(sr * 0.012)),
-        this._makeAllpass(Math.round(sr * 0.004)),
+        this._makeAllpass(Math.round(sr * 0.005)),
       ],
     };
   }
@@ -30,7 +35,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     return [
-      { name: 'mix', defaultValue: 0.5, minValue: 0, maxValue: 1 },
+      { name: 'mix', defaultValue: 0.45, minValue: 0, maxValue: 1 },
     ];
   }
 
@@ -41,6 +46,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
     const mix = parameters.mix[0];
     const dry = 1.0 - mix;
+    const numCombs = 6;
 
     for (let ch = 0; ch < output.length; ch++) {
       if (!this._channels[ch]) this._channels[ch] = this._initChannel();
@@ -58,7 +64,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
           comb.idx = (comb.idx + 1) % comb.buf.length;
           wet += delayed;
         }
-        wet *= 0.25;
+        wet /= numCombs;
 
         for (const ap of state.allpasses) {
           const delayed = ap.buf[ap.idx];

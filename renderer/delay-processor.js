@@ -1,7 +1,6 @@
 class DelayProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Max 2 seconds of delay at sample rate
     this._maxSamples = Math.round(sampleRate * 2);
     this._buf = [];
     this._writeIdx = [];
@@ -10,8 +9,8 @@ class DelayProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'time', defaultValue: 0.3, minValue: 0.01, maxValue: 2.0 },
-      { name: 'feedback', defaultValue: 0.35, minValue: 0, maxValue: 0.9 },
-      { name: 'mix', defaultValue: 0.4, minValue: 0, maxValue: 1 },
+      { name: 'feedback', defaultValue: 0.45, minValue: 0, maxValue: 0.9 },
+      { name: 'mix', defaultValue: 0.55, minValue: 0, maxValue: 1 },
     ];
   }
 

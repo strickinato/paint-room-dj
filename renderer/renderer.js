@@ -33,48 +33,74 @@ const persistentEffects = new Map(); // slotIndex -> AudioWorkletNode (always in
 
 
 const EFFECTS = {
-  highpass: {
-    label: 'High Pass',
-    create: () => new AudioWorkletNode(audioCtx, 'highpass-processor'),
-  },
-  lowpass: {
-    label: 'Low Pass',
-    create: () => new AudioWorkletNode(audioCtx, 'lowpass-processor'),
-  },
-  reverb: {
-    label: 'Reverb',
-    create: () => new AudioWorkletNode(audioCtx, 'reverb-processor'),
-  },
-  distortion: {
-    label: 'Distortion',
-    create: () => new AudioWorkletNode(audioCtx, 'distortion-processor'),
+  bitcrusher: {
+    label: 'Bitcrusher',
+    create: () => new AudioWorkletNode(audioCtx, 'bitcrusher-processor'),
   },
   delay: {
     label: 'Delay',
     create: () => new AudioWorkletNode(audioCtx, 'delay-processor'),
   },
-  bitcrusher: {
-    label: 'Bitcrusher',
-    create: () => new AudioWorkletNode(audioCtx, 'bitcrusher-processor'),
+  distortion: {
+    label: 'Distortion',
+    create: () => new AudioWorkletNode(audioCtx, 'distortion-processor'),
+  },
+  doublespeed: {
+    label: 'Double Speed',
+    playbackRate: 2.0,
+  },
+  highpass: {
+    label: 'EQ High Pass',
+    create: () => new AudioWorkletNode(audioCtx, 'highpass-processor'),
+  },
+  lowpass: {
+    label: 'EQ Low Pass',
+    create: () => new AudioWorkletNode(audioCtx, 'lowpass-processor'),
+  },
+  sweepdown: {
+    label: 'EQ Sweep Down',
+    persistent: true,
+    create: () => new AudioWorkletNode(audioCtx, 'filtersweep-processor', {
+      processorOptions: { direction: 'down' },
+    }),
+  },
+  sweepup: {
+    label: 'EQ Sweep Up',
+    persistent: true,
+    create: () => new AudioWorkletNode(audioCtx, 'filtersweep-processor', {
+      processorOptions: { direction: 'up' },
+    }),
+  },
+  flanger: {
+    label: 'Flanger',
+    create: () => new AudioWorkletNode(audioCtx, 'flanger-processor'),
+  },
+  halfspeed: {
+    label: 'Half Speed',
+    playbackRate: 0.5,
+  },
+  reverb: {
+    label: 'Reverb',
+    create: () => new AudioWorkletNode(audioCtx, 'reverb-processor'),
+  },
+  reverse: {
+    label: 'Reverse',
+    persistent: true,
+    create: () => new AudioWorkletNode(audioCtx, 'reverse-processor'),
+  },
+  ringmod: {
+    label: 'Ring Mod',
+    create: () => new AudioWorkletNode(audioCtx, 'ringmod-processor'),
   },
   stutter: {
     label: 'Stutter',
     persistent: true,
     create: () => new AudioWorkletNode(audioCtx, 'stutter-processor'),
   },
-  sweepup: {
-    label: 'Sweep Up',
+  tapestop: {
+    label: 'Tape Stop',
     persistent: true,
-    create: () => new AudioWorkletNode(audioCtx, 'filtersweep-processor', {
-      processorOptions: { direction: 'up' },
-    }),
-  },
-  sweepdown: {
-    label: 'Sweep Down',
-    persistent: true,
-    create: () => new AudioWorkletNode(audioCtx, 'filtersweep-processor', {
-      processorOptions: { direction: 'down' },
-    }),
+    create: () => new AudioWorkletNode(audioCtx, 'tapestop-processor'),
   },
 };
 
@@ -123,12 +149,29 @@ function removePersistentEffect(i) {
   rebuildEffectChain();
 }
 
+// Track active playback rate overrides (slotIndex -> rate)
+const activePlaybackRates = new Map();
+
+function applyPlaybackRate() {
+  // If any speed effects are active, use the last one activated; otherwise 1.0
+  let rate = 1.0;
+  for (const r of activePlaybackRates.values()) {
+    rate = r;
+  }
+  for (const source of activeSources.values()) {
+    source.playbackRate.value = rate;
+  }
+}
+
 function activateEffect(i) {
   const slot = slots[i];
   if (!slot.effect || !EFFECTS[slot.effect]) return;
   const def = EFFECTS[slot.effect];
 
-  if (def.persistent) {
+  if (def.playbackRate) {
+    activePlaybackRates.set(i, def.playbackRate);
+    applyPlaybackRate();
+  } else if (def.persistent) {
     ensurePersistentEffect(i);
     const node = persistentEffects.get(i);
     if (node) node.port.postMessage({ type: 'activate', rate: 0.1 });
@@ -145,7 +188,10 @@ function deactivateEffect(i) {
   const slot = slots[i];
   const def = slot.effect && EFFECTS[slot.effect];
 
-  if (def && def.persistent) {
+  if (def && def.playbackRate) {
+    activePlaybackRates.delete(i);
+    applyPlaybackRate();
+  } else if (def && def.persistent) {
     const node = persistentEffects.get(i);
     if (node) node.port.postMessage({ type: 'deactivate' });
   } else {
@@ -586,6 +632,7 @@ function playSong(i) {
   };
   source.start();
   activeSources.set(i, source);
+  applyPlaybackRate();
   slotElements[i].classList.add('playing');
   currentSongSlot = i;
 }
@@ -606,6 +653,7 @@ function playOneshot(i) {
   };
   source.start();
   activeSources.set(i, source);
+  applyPlaybackRate();
   slotElements[i].classList.add('playing-oneshot');
 }
 
@@ -981,6 +1029,10 @@ async function init() {
     'bitcrusher-processor.js',
     'stutter-processor.js',
     'filtersweep-processor.js',
+    'tapestop-processor.js',
+    'flanger-processor.js',
+    'ringmod-processor.js',
+    'reverse-processor.js',
   ];
   for (const file of worklets) {
     try {

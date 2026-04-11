@@ -1,15 +1,15 @@
 class DistortionProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // One-pole high-pass DC blocker state per channel
     this._prevIn = [];
     this._prevOut = [];
   }
 
   static get parameterDescriptors() {
     return [
-      { name: 'drive', defaultValue: 12, minValue: 1, maxValue: 50 },
-      { name: 'mix', defaultValue: 0.8, minValue: 0, maxValue: 1 },
+      { name: 'drive', defaultValue: 40, minValue: 1, maxValue: 100 },
+      { name: 'mix', defaultValue: 1.0, minValue: 0, maxValue: 1 },
+      { name: 'outputGain', defaultValue: 0.15, minValue: 0.01, maxValue: 1 },
     ];
   }
 
@@ -21,6 +21,7 @@ class DistortionProcessor extends AudioWorkletProcessor {
     const drive = parameters.drive[0];
     const mix = parameters.mix[0];
     const dry = 1.0 - mix;
+    const outputGain = parameters.outputGain[0];
 
     for (let ch = 0; ch < input.length; ch++) {
       if (this._prevIn[ch] === undefined) {
@@ -33,28 +34,21 @@ class DistortionProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < inp.length; i++) {
         const x = inp[i] * drive;
 
-        // Asymmetric waveshaping: different curves for positive/negative
-        // Creates even harmonics (tube-like character)
+        // Asymmetric hard clipping
         let shaped;
         if (x >= 0) {
-          // Hard clip positive with cubic soft-knee
-          const t = Math.min(x, 1.5);
-          shaped = t - (t * t * t) / 6.75;
+          shaped = Math.min(x, 1.0);
         } else {
-          // Sharper negative clip via tanh — adds grit
-          shaped = -Math.tanh(-x * 1.5) * 0.8;
+          shaped = Math.max(x, -0.8);
         }
 
-        // DC blocker (asymmetric clipping introduces DC offset)
+        // DC blocker
         const dcAlpha = 0.995;
         const filtered = shaped - this._prevIn[ch] + dcAlpha * this._prevOut[ch];
         this._prevIn[ch] = shaped;
         this._prevOut[ch] = filtered;
 
-        // RMS-matched output: normalize so clipped signal roughly matches input level
-        // The shaper peaks around 0.67 for positive, 0.8 for negative,
-        // so scale up slightly to match input amplitude
-        out[i] = inp[i] * dry + filtered * 0.5 * mix;
+        out[i] = inp[i] * dry + filtered * outputGain * mix;
       }
     }
     return true;

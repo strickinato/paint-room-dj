@@ -3,17 +3,26 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
     super();
     this._channels = [];
     this._active = false;
-    this._phase = 0; // 0 to 1, represents sweep progress
+    this._deactivating = false;
+    this._fadeIn = 0; // samples into fade-in
+    this._fadeOut = 0; // samples remaining in fade-out
+    this._phase = 0; // 0 to 1 and back, ping-pong sweep
+    this._sweepDir = 1; // 1 = forward, -1 = reverse
     // Direction: 'up' or 'down', passed via processorOptions
     this._direction = (options.processorOptions && options.processorOptions.direction) || 'up';
+    this._fadeSamples = Math.round(sampleRate * 0.03); // 30ms fade
 
     this.port.onmessage = (e) => {
       if (e.data.type === 'activate') {
         this._active = true;
+        this._deactivating = false;
         this._phase = 0;
+        this._sweepDir = 1;
+        this._fadeIn = 0;
+        this._fadeOut = 0;
       } else if (e.data.type === 'deactivate') {
-        this._active = false;
-        this._phase = 0;
+        this._deactivating = true;
+        this._fadeOut = this._fadeSamples;
       }
     };
   }
@@ -21,9 +30,9 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'speed', defaultValue: 0.5, minValue: 0.05, maxValue: 5.0 },
-      { name: 'resonance', defaultValue: 12, minValue: 1, maxValue: 30 },
-      { name: 'minFreq', defaultValue: 80, minValue: 20, maxValue: 2000 },
-      { name: 'maxFreq', defaultValue: 12000, minValue: 2000, maxValue: 20000 },
+      { name: 'resonance', defaultValue: 3, minValue: 0.5, maxValue: 30 },
+      { name: 'minFreq', defaultValue: 200, minValue: 20, maxValue: 2000 },
+      { name: 'maxFreq', defaultValue: 8000, minValue: 2000, maxValue: 20000 },
     ];
   }
 
@@ -32,8 +41,7 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!input || !input.length) return true;
 
-    if (!this._active) {
-      // Bypass
+    if (!this._active && !this._deactivating) {
       for (let ch = 0; ch < input.length; ch++) {
         output[ch].set(input[ch]);
       }
@@ -45,9 +53,12 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
     const minFreq = parameters.minFreq[0];
     const maxFreq = parameters.maxFreq[0];
     const blockSize = input[0].length;
-
-    // Advance phase: sweep completes in (1/speed) seconds
     const phaseInc = speed / sampleRate;
+    const fadeSamples = this._fadeSamples;
+
+    // Sweep up uses highpass (cuts lows as freq rises)
+    // Sweep down uses lowpass (cuts highs as freq drops)
+    const useHighpass = this._direction === 'up';
 
     for (let ch = 0; ch < input.length; ch++) {
       if (!this._channels[ch]) {
@@ -58,9 +69,12 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
       const out = output[ch];
 
       let phase = this._phase;
+      let sweepDir = this._sweepDir;
+      let fadeOut = this._fadeOut;
+      let fadeIn = this._fadeIn;
+
       for (let i = 0; i < blockSize; i++) {
-        // Clamp phase to [0, 1]
-        const t = Math.min(phase, 1.0);
+        const t = phase;
 
         // Exponential frequency sweep
         let freq;
@@ -70,25 +84,27 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
           freq = maxFreq * Math.pow(minFreq / maxFreq, t);
         }
 
-        // Biquad bandpass coefficients
+        // Biquad coefficients
         const w0 = 2 * Math.PI * freq / sampleRate;
         const sinW0 = Math.sin(w0);
         const cosW0 = Math.cos(w0);
         const alpha = sinW0 / (2 * Q);
-
-        const b0 = alpha;
-        const b1 = 0;
-        const b2 = -alpha;
         const a0 = 1 + alpha;
-        const a1 = -2 * cosW0;
-        const a2 = 1 - alpha;
 
-        // Normalize
-        const nb0 = b0 / a0;
-        const nb1 = b1 / a0;
-        const nb2 = b2 / a0;
-        const na1 = a1 / a0;
-        const na2 = a2 / a0;
+        let nb0, nb1, nb2;
+        if (useHighpass) {
+          // Highpass coefficients
+          nb0 = ((1 + cosW0) / 2) / a0;
+          nb1 = (-(1 + cosW0)) / a0;
+          nb2 = ((1 + cosW0) / 2) / a0;
+        } else {
+          // Lowpass coefficients
+          nb0 = ((1 - cosW0) / 2) / a0;
+          nb1 = (1 - cosW0) / a0;
+          nb2 = ((1 - cosW0) / 2) / a0;
+        }
+        const na1 = (-2 * cosW0) / a0;
+        const na2 = (1 - alpha) / a0;
 
         // Apply filter
         const x = inp[i];
@@ -98,16 +114,55 @@ class FilterSweepProcessor extends AudioWorkletProcessor {
         s.y2 = s.y1;
         s.y1 = y;
 
-        // Mix: as sweep progresses, increase wet amount for dramatic effect
-        const wetAmount = 0.5 + t * 0.5;
-        out[i] = inp[i] * (1 - wetAmount) + y * Q * 0.15 * wetAmount;
+        // Crossfade between dry and filtered
+        let blend = 1.0; // 1.0 = fully filtered
 
-        if (ch === 0) phase += phaseInc;
+        // Fade in on activation
+        if (fadeIn < fadeSamples) {
+          blend = fadeIn / fadeSamples;
+          if (ch === 0) fadeIn++;
+        }
+
+        // Fade out on deactivation (overrides fade-in)
+        if (this._deactivating && fadeOut > 0) {
+          blend = fadeOut / fadeSamples;
+          if (ch === 0) fadeOut--;
+        }
+
+        out[i] = inp[i] * (1 - blend) + y * blend;
+
+        if (ch === 0) {
+          phase += phaseInc * sweepDir;
+          if (phase >= 1.0) {
+            phase = 1.0;
+            sweepDir = -1;
+          } else if (phase <= 0.0) {
+            phase = 0.0;
+            sweepDir = 1;
+          }
+        }
+      }
+
+      if (ch === 0) {
+        this._fadeOut = fadeOut;
+        this._fadeIn = fadeIn;
       }
     }
-    // Only advance phase once (channel 0 already did it)
-    this._phase += phaseInc * blockSize;
-    if (this._phase > 1.0) this._phase = 1.0;
+
+    this._phase = Math.max(0, Math.min(1, this._phase + phaseInc * this._sweepDir * blockSize));
+    if (this._phase >= 1.0) {
+      this._phase = 1.0;
+      this._sweepDir = -1;
+    } else if (this._phase <= 0.0) {
+      this._phase = 0.0;
+      this._sweepDir = 1;
+    }
+
+    if (this._deactivating && this._fadeOut <= 0) {
+      this._active = false;
+      this._deactivating = false;
+      this._channels = [];
+    }
 
     return true;
   }
