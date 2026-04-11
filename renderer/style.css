@@ -257,48 +257,64 @@ body {
 
 .slot-info {
   position: absolute;
-  top: 1px;
-  left: 1px;
+  top: 2px;
+  left: 3px;
   right: 14px;
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: 12px;
+  line-height: 1.3;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.slot-status {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.slot-label-wrap {
+  overflow: hidden;
 }
 
 .slot-dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  vertical-align: middle;
-  margin-right: 2px;
+  flex-shrink: 0;
 }
 
 .slot-dot.red { background: var(--dot-red); }
 .slot-dot.yellow { background: var(--effect-dot); }
 .slot-dot.green { background: var(--dot-green); }
 
+.slot-status-text {
+  font-size: 10px;
+  color: var(--page-text-muted);
+}
+
 .slot-label {
-  vertical-align: middle;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.slot:hover .slot-label.overflowing {
+  animation: marquee var(--marquee-duration, 6s) linear infinite;
+}
+
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  45%  { transform: translateX(var(--marquee-offset)); }
+  55%  { transform: translateX(var(--marquee-offset)); }
+  100% { transform: translateX(0); }
 }
 
 .slot-label.empty {
   color: var(--page-text-muted);
 }
 
-.slot-label.missing {
-  color: var(--dot-red);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
 .slot-load-btn {
-  display: block;
   font-size: 9px;
-  margin-top: 1px;
-  padding: 0 2px;
+  padding: 0 3px;
   cursor: pointer;
   border: 1px solid var(--button-border);
   background: var(--button-bg);

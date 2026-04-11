@@ -358,6 +358,19 @@ async function relocateSlotFile(i) {
   autosave();
 }
 
+function setupMarquee(label, wrap) {
+  if (label.scrollWidth > wrap.clientWidth) {
+    label.classList.add('overflowing');
+    const overflow = label.scrollWidth - wrap.clientWidth;
+    label.style.setProperty('--marquee-offset', -overflow + 'px');
+    // ~30px per second scroll speed, minimum 4s, plus 2s for pauses at each end
+    const duration = Math.max(4, (overflow / 30) + 2);
+    label.style.setProperty('--marquee-duration', duration + 's');
+  } else {
+    label.classList.remove('overflowing');
+  }
+}
+
 function renderSlot(i) {
   const el = slotElements[i];
   const slot = slots[i];
@@ -386,13 +399,25 @@ function renderSlot(i) {
 
   if (slot.mode === 'effect') {
     if (slot.effect && EFFECTS[slot.effect]) {
+      const status = document.createElement('div');
+      status.className = 'slot-status';
       const dot = document.createElement('span');
       dot.className = 'slot-dot yellow';
+      const statusText = document.createElement('span');
+      statusText.className = 'slot-status-text';
+      statusText.textContent = 'effect';
+      status.appendChild(dot);
+      status.appendChild(statusText);
+      const wrap = document.createElement('div');
+      wrap.className = 'slot-label-wrap';
       const label = document.createElement('span');
       label.className = 'slot-label';
       label.textContent = EFFECTS[slot.effect].label;
-      div.appendChild(dot);
-      div.appendChild(label);
+      div.title = EFFECTS[slot.effect].label;
+      wrap.appendChild(label);
+      div.appendChild(wrap);
+      div.appendChild(status);
+      requestAnimationFrame(() => setupMarquee(label, wrap));
     } else {
       div.innerHTML = '<span class="slot-label empty">&lt;drag effect&gt;</span>';
     }
@@ -401,21 +426,36 @@ function renderSlot(i) {
     div.innerHTML = '<span class="slot-label empty">&lt;empty&gt;</span>';
   } else if (!slot.file.onDisk) {
     // associated but file missing
+    const status = document.createElement('div');
+    status.className = 'slot-status';
     const dot = document.createElement('span');
     dot.className = 'slot-dot red';
-    const label = document.createElement('span');
-    label.className = 'slot-label missing';
-    label.textContent = 'cannot find file';
-    label.addEventListener('click', () => relocateSlotFile(i));
-    div.appendChild(dot);
-    div.appendChild(label);
-  } else if (!slot.file.buffer) {
-    // on disk, not loaded
-    const dot = document.createElement('span');
-    dot.className = 'slot-dot yellow';
+    const statusText = document.createElement('span');
+    statusText.className = 'slot-status-text';
+    statusText.textContent = 'missing';
+    statusText.classList.add('missing');
+    statusText.style.cursor = 'pointer';
+    statusText.style.textDecoration = 'underline';
+    statusText.style.color = 'var(--dot-red)';
+    statusText.addEventListener('click', () => relocateSlotFile(i));
+    status.appendChild(dot);
+    status.appendChild(statusText);
+    const wrap = document.createElement('div');
+    wrap.className = 'slot-label-wrap';
     const label = document.createElement('span');
     label.className = 'slot-label';
     label.textContent = basename(slot.file.path);
+    div.title = basename(slot.file.path);
+    wrap.appendChild(label);
+    div.appendChild(wrap);
+    div.appendChild(status);
+    requestAnimationFrame(() => setupMarquee(label, wrap));
+  } else if (!slot.file.buffer) {
+    // on disk, not loaded
+    const status = document.createElement('div');
+    status.className = 'slot-status';
+    const dot = document.createElement('span');
+    dot.className = 'slot-dot yellow';
     const btn = document.createElement('button');
     btn.className = 'slot-load-btn';
     btn.textContent = 'load';
@@ -423,18 +463,39 @@ function renderSlot(i) {
       e.stopPropagation();
       loadSlotAudio(i);
     });
-    div.appendChild(dot);
-    div.appendChild(label);
-    div.appendChild(btn);
-  } else {
-    // loaded and ready
-    const dot = document.createElement('span');
-    dot.className = 'slot-dot green';
+    status.appendChild(dot);
+    status.appendChild(btn);
+    const wrap = document.createElement('div');
+    wrap.className = 'slot-label-wrap';
     const label = document.createElement('span');
     label.className = 'slot-label';
     label.textContent = basename(slot.file.path);
-    div.appendChild(dot);
-    div.appendChild(label);
+    div.title = basename(slot.file.path);
+    wrap.appendChild(label);
+    div.appendChild(wrap);
+    div.appendChild(status);
+    requestAnimationFrame(() => setupMarquee(label, wrap));
+  } else {
+    // loaded and ready
+    const status = document.createElement('div');
+    status.className = 'slot-status';
+    const dot = document.createElement('span');
+    dot.className = 'slot-dot green';
+    const statusText = document.createElement('span');
+    statusText.className = 'slot-status-text';
+    statusText.textContent = 'ready';
+    status.appendChild(dot);
+    status.appendChild(statusText);
+    const wrap = document.createElement('div');
+    wrap.className = 'slot-label-wrap';
+    const label = document.createElement('span');
+    label.className = 'slot-label';
+    label.textContent = basename(slot.file.path);
+    div.title = basename(slot.file.path);
+    wrap.appendChild(label);
+    div.appendChild(wrap);
+    div.appendChild(status);
+    requestAnimationFrame(() => setupMarquee(label, wrap));
   }
 
   // remove old X button
@@ -587,6 +648,10 @@ function buildUI() {
           if (mediaFilename) {
             const absPath = await window.electronAPI.resolvePath(projectDir, mediaFilename);
             const exists = await window.electronAPI.fileExists(absPath);
+            if (slots[i].mode === 'effect' || slots[i].mode === 'stop') {
+              slots[i].mode = 'song';
+              slots[i].effect = null;
+            }
             slots[i].file = { path: absPath, onDisk: exists, buffer: null };
             renderSlot(i);
             autosave();
@@ -603,6 +668,10 @@ function buildUI() {
           // copy file into project directory
           const relPath = await window.electronAPI.copyIntoProject(projectDir, sourcePath);
           const absPath = await window.electronAPI.resolvePath(projectDir, relPath);
+          if (slots[i].mode === 'effect' || slots[i].mode === 'stop') {
+            slots[i].mode = 'song';
+            slots[i].effect = null;
+          }
           slots[i].file = {
             path: absPath,
             onDisk: true,
