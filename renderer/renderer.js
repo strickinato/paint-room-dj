@@ -4,12 +4,13 @@ const NUM_GRIDS = 4;
 const GRID_SIZE = 16; // 4x4
 const TOTAL_SLOTS = NUM_GRIDS * GRID_SIZE;
 
-// Each slot: { mode: 'song'|'oneshot'|'stop', file: null | { path, onDisk, buffer } }
+// Each slot: { mode: 'song'|'oneshot'|'stop'|'effect', file: null | { path, onDisk, buffer }, effect: null | string }
 // At runtime, file.path is always absolute.
 // In data.json, file.path is relative to the project directory.
 const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
   mode: 'song',
-  file: null
+  file: null,
+  effect: null
 }));
 
 let projectDir = null;
@@ -18,6 +19,168 @@ let projectDir = null;
 
 const audioCtx = new AudioContext();
 const activeSources = new Map(); // slotIndex -> AudioBufferSourceNode
+
+// Master audio graph: source → masterInput → [effects] → masterOutput → destination
+const masterInput = audioCtx.createGain();
+const masterOutput = audioCtx.createGain();
+masterOutput.connect(audioCtx.destination);
+masterInput.connect(masterOutput);
+
+const activeEffects = new Map(); // slotIndex -> { node, input?, output? }
+
+// === EFFECTS ===
+
+function generateImpulseResponse(channels, duration, decay) {
+  const length = audioCtx.sampleRate * duration;
+  const buffer = audioCtx.createBuffer(channels, length, audioCtx.sampleRate);
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  return buffer;
+}
+
+function makeDistortionCurve(amount) {
+  const samples = 44100;
+  const curve = new Float32Array(samples);
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / samples - 1;
+    curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
+const EFFECTS = {
+  highpass: {
+    label: 'High Pass',
+    create: () => {
+      const node = audioCtx.createBiquadFilter();
+      node.type = 'highpass';
+      node.frequency.value = 1000;
+      node.Q.value = 1;
+      return node;
+    }
+  },
+  lowpass: {
+    label: 'Low Pass',
+    create: () => {
+      const node = audioCtx.createBiquadFilter();
+      node.type = 'lowpass';
+      node.frequency.value = 800;
+      node.Q.value = 1;
+      return node;
+    }
+  },
+  reverb: {
+    label: 'Reverb',
+    create: () => {
+      const dry = audioCtx.createGain();
+      dry.gain.value = 0.6;
+      const wet = audioCtx.createGain();
+      wet.gain.value = 0.4;
+      const convolver = audioCtx.createConvolver();
+      convolver.buffer = generateImpulseResponse(2, 2.5, 3);
+      const input = audioCtx.createGain();
+      const output = audioCtx.createGain();
+      input.connect(dry);
+      input.connect(convolver);
+      convolver.connect(wet);
+      dry.connect(output);
+      wet.connect(output);
+      return { input, output };
+    }
+  },
+  distortion: {
+    label: 'Distortion',
+    create: () => {
+      const node = audioCtx.createWaveShaper();
+      node.curve = makeDistortionCurve(400);
+      node.oversample = '4x';
+      return node;
+    }
+  },
+  delay: {
+    label: 'Delay',
+    create: () => {
+      const input = audioCtx.createGain();
+      const output = audioCtx.createGain();
+      const dry = audioCtx.createGain();
+      dry.gain.value = 0.7;
+      const wet = audioCtx.createGain();
+      wet.gain.value = 0.5;
+      const delay = audioCtx.createDelay();
+      delay.delayTime.value = 0.3;
+      const feedback = audioCtx.createGain();
+      feedback.gain.value = 0.35;
+      input.connect(dry);
+      input.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      delay.connect(wet);
+      dry.connect(output);
+      wet.connect(output);
+      return { input, output };
+    }
+  },
+  bitcrusher: {
+    label: 'Bitcrusher',
+    create: () => {
+      return new AudioWorkletNode(audioCtx, 'bitcrusher-processor');
+    }
+  },
+};
+
+function rebuildEffectChain() {
+  // disconnect masterInput from everything
+  masterInput.disconnect();
+  // disconnect all active effect nodes
+  for (const entry of activeEffects.values()) {
+    const node = entry.input || entry;
+    try { node.disconnect(); } catch {}
+    if (entry.output) try { entry.output.disconnect(); } catch {}
+  }
+
+  if (activeEffects.size === 0) {
+    masterInput.connect(masterOutput);
+    return;
+  }
+
+  // chain: masterInput → effect1 → effect2 → ... → masterOutput
+  const nodes = Array.from(activeEffects.values());
+  let prev = masterInput;
+  for (const entry of nodes) {
+    const input = entry.input || entry;
+    const output = entry.output || entry;
+    prev.connect(input);
+    prev = output;
+  }
+  prev.connect(masterOutput);
+}
+
+function activateEffect(i) {
+  const slot = slots[i];
+  if (!slot.effect || !EFFECTS[slot.effect]) return;
+  if (activeEffects.has(i)) return; // already active
+  const node = EFFECTS[slot.effect].create();
+  activeEffects.set(i, node);
+  rebuildEffectChain();
+  slotElements[i].classList.add('playing-effect');
+}
+
+function deactivateEffect(i) {
+  const entry = activeEffects.get(i);
+  if (!entry) return;
+  activeEffects.delete(i);
+  // disconnect the removed node
+  const input = entry.input || entry;
+  const output = entry.output || entry;
+  try { input.disconnect(); } catch {}
+  if (entry.output) try { output.disconnect(); } catch {}
+  rebuildEffectChain();
+  slotElements[i].classList.remove('playing-effect');
+}
 
 // === RENDERING ===
 
@@ -51,6 +214,20 @@ async function refreshMediaList() {
     div.draggable = true;
     div.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/media-filename', filename);
+    });
+    list.appendChild(div);
+  }
+}
+
+function buildEffectsList() {
+  const list = document.getElementById('effects-list');
+  for (const [id, def] of Object.entries(EFFECTS)) {
+    const div = document.createElement('div');
+    div.className = 'effect-item';
+    div.textContent = def.label;
+    div.draggable = true;
+    div.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/effect-id', id);
     });
     list.appendChild(div);
   }
@@ -91,9 +268,9 @@ function renderSlot(i) {
   const slot = slots[i];
   const select = el.querySelector('select');
 
-  // update mode class — only show border if slot has a file or is a stop slot
-  el.classList.remove('mode-song', 'mode-oneshot', 'mode-stop');
-  if (slot.file || slot.mode === 'stop') {
+  // update mode class — only show border if slot has content or is stop/effect
+  el.classList.remove('mode-song', 'mode-oneshot', 'mode-stop', 'mode-effect');
+  if (slot.file || slot.mode === 'stop' || (slot.mode === 'effect' && slot.effect)) {
     el.classList.add('mode-' + slot.mode);
   }
 
@@ -104,7 +281,19 @@ function renderSlot(i) {
   const div = document.createElement('div');
   div.className = 'slot-info';
 
-  if (!slot.file) {
+  if (slot.mode === 'effect') {
+    if (slot.effect && EFFECTS[slot.effect]) {
+      const dot = document.createElement('span');
+      dot.className = 'slot-dot yellow';
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      label.textContent = EFFECTS[slot.effect].label;
+      div.appendChild(dot);
+      div.appendChild(label);
+    } else {
+      div.innerHTML = '<span class="slot-label empty">&lt;drag effect&gt;</span>';
+    }
+  } else if (!slot.file) {
     // not associated
     div.innerHTML = '<span class="slot-label empty">&lt;empty&gt;</span>';
   } else if (!slot.file.onDisk) {
@@ -151,21 +340,31 @@ function renderSlot(i) {
 
   el.appendChild(div);
 
-  if (slot.file) {
+  const hasContent = slot.file || (slot.mode === 'effect' && slot.effect);
+  if (hasContent) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'slot-remove';
     removeBtn.textContent = 'x';
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      stopSlot(i);
-      slots[i].file = null;
+      if (slot.mode === 'effect') {
+        deactivateEffect(i);
+        slots[i].effect = null;
+      } else {
+        stopSlot(i);
+        slots[i].file = null;
+      }
       renderSlot(i);
       autosave();
     });
     el.appendChild(removeBtn);
   }
 
-  el.title = slot.file ? slot.file.path : 'empty';
+  if (slot.mode === 'effect' && slot.effect) {
+    el.title = EFFECTS[slot.effect]?.label || slot.effect;
+  } else {
+    el.title = slot.file ? slot.file.path : 'empty';
+  }
   select.value = slot.mode;
 }
 
@@ -190,27 +389,43 @@ function buildUI() {
         const opt3 = document.createElement('option');
         opt3.value = 'stop';
         opt3.textContent = 'stop';
+        const opt4 = document.createElement('option');
+        opt4.value = 'effect';
+        opt4.textContent = 'effect';
         select.appendChild(opt1);
         select.appendChild(opt2);
         select.appendChild(opt3);
+        select.appendChild(opt4);
         select.addEventListener('change', () => {
           slots[i].mode = select.value;
+          renderSlot(i);
           autosave();
         });
         select.addEventListener('click', (e) => {
           e.stopPropagation();
         });
+        select.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+        });
 
         el.appendChild(select);
 
-        el.addEventListener('click', () => {
+        el.addEventListener('pointerdown', (e) => {
+          if (e.button !== 0) return;
           triggerSlot(i);
+        });
+        el.addEventListener('pointerup', (e) => {
+          if (e.button !== 0) return;
+          releaseSlot(i);
+        });
+        el.addEventListener('pointerleave', () => {
+          releaseSlot(i);
         });
 
         // make slot draggable for slot-to-slot drag
         el.draggable = true;
         el.addEventListener('dragstart', (e) => {
-          if (!slots[i].file) {
+          if (!slots[i].file && !(slots[i].mode === 'effect' && slots[i].effect)) {
             e.preventDefault();
             return;
           }
@@ -240,17 +455,31 @@ function buildUI() {
             // swap slot data
             const srcFile = slots[srcIdx].file;
             const srcMode = slots[srcIdx].mode;
+            const srcEffect = slots[srcIdx].effect;
             slots[srcIdx].file = slots[i].file;
             slots[srcIdx].mode = slots[i].mode;
+            slots[srcIdx].effect = slots[i].effect;
             slots[i].file = srcFile;
             slots[i].mode = srcMode;
+            slots[i].effect = srcEffect;
             renderSlot(srcIdx);
             renderSlot(i);
             autosave();
             return;
           }
 
-          // 2) media list drag
+          // 2) effect drag
+          const effectId = e.dataTransfer.getData('text/effect-id');
+          if (effectId) {
+            slots[i].mode = 'effect';
+            slots[i].effect = effectId;
+            slots[i].file = null;
+            renderSlot(i);
+            autosave();
+            return;
+          }
+
+          // 3) media list drag
           const mediaFilename = e.dataTransfer.getData('text/media-filename');
           if (mediaFilename) {
             const absPath = await window.electronAPI.resolvePath(projectDir, mediaFilename);
@@ -362,7 +591,7 @@ function playSong(i) {
 
   const source = audioCtx.createBufferSource();
   source.buffer = slot.file.buffer;
-  source.connect(audioCtx.destination);
+  source.connect(masterInput);
   source.onended = () => {
     activeSources.delete(i);
     slotElements[i].classList.remove('playing');
@@ -386,7 +615,7 @@ function playOneshot(i) {
 
   const source = audioCtx.createBufferSource();
   source.buffer = slot.file.buffer;
-  source.connect(audioCtx.destination);
+  source.connect(masterInput);
   source.onended = () => {
     activeSources.delete(i);
     slotElements[i].classList.remove('playing-oneshot');
@@ -399,6 +628,9 @@ function playOneshot(i) {
 function killAllAudio() {
   for (const i of Array.from(activeSources.keys())) {
     stopSlot(i);
+  }
+  for (const i of Array.from(activeEffects.keys())) {
+    deactivateEffect(i);
   }
   currentSongSlot = null;
 }
@@ -413,6 +645,8 @@ function triggerSlot(i) {
     playOneshot(i);
   } else if (slot.mode === 'stop') {
     killAllAudio();
+  } else if (slot.mode === 'effect') {
+    activateEffect(i);
   }
 }
 
@@ -420,6 +654,8 @@ function releaseSlot(i) {
   const slot = slots[i];
   if (slot.mode === 'oneshot') {
     stopSlot(i);
+  } else if (slot.mode === 'effect') {
+    deactivateEffect(i);
   }
 }
 
@@ -441,12 +677,12 @@ async function serializeState() {
   const result = [];
   for (let i = 0; i < TOTAL_SLOTS; i++) {
     const slot = slots[i];
-    if (!slot.file) {
-      result.push({ mode: slot.mode, file: null });
-    } else {
+    const entry = { mode: slot.mode, file: null, effect: slot.effect || null };
+    if (slot.file) {
       const relPath = await window.electronAPI.relativePath(projectDir, slot.file.path);
-      result.push({ mode: slot.mode, file: { path: relPath } });
+      entry.file = { path: relPath };
     }
+    result.push(entry);
   }
   return result;
 }
@@ -466,6 +702,7 @@ async function restoreState() {
     const entry = saved[i];
     if (!entry) continue;
     slots[i].mode = entry.mode || 'song';
+    slots[i].effect = entry.effect || null;
     if (entry.file && entry.file.path) {
       const absPath = await window.electronAPI.resolvePath(projectDir, entry.file.path);
       const exists = await window.electronAPI.fileExists(absPath);
@@ -492,9 +729,14 @@ async function pickProjectDir() {
 
 function clearAllSlots() {
   killAllAudio();
+  // deactivate all active effects
+  for (const i of Array.from(activeEffects.keys())) {
+    deactivateEffect(i);
+  }
   for (let i = 0; i < TOTAL_SLOTS; i++) {
     slots[i].mode = 'song';
     slots[i].file = null;
+    slots[i].effect = null;
     renderSlot(i);
   }
   sendColors();
@@ -550,6 +792,7 @@ const MAX_LOG_LINES = 50;
 const COLOR_GREEN = 66;  // song
 const COLOR_BLUE = 78;   // oneshot
 const COLOR_RED = 13;    // stop
+const COLOR_YELLOW = 49; // effect
 
 function sendColors() {
   if (!activeOutput) {
@@ -564,6 +807,8 @@ function sendColors() {
     let velocity;
     if (slot.mode === 'stop') {
       velocity = COLOR_RED;
+    } else if (slot.mode === 'effect' && slot.effect) {
+      velocity = COLOR_YELLOW;
     } else if (!slot.file) {
       velocity = 0;
     } else if (slot.mode === 'song') {
@@ -742,8 +987,16 @@ audioDeviceSelect.addEventListener('change', async () => {
 // === INIT ===
 
 async function init() {
+  // register audio worklets
+  try {
+    await audioCtx.audioWorklet.addModule('bitcrusher-processor.js');
+  } catch (err) {
+    console.error('Failed to load bitcrusher worklet:', err);
+  }
+
   buildUI();
   buildNoteMap();
+  buildEffectsList();
 
   // listen for directory changes from file watcher
   window.electronAPI.onDirChanged(() => refreshMediaList());
