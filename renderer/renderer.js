@@ -26,159 +26,121 @@ const masterOutput = audioCtx.createGain();
 masterOutput.connect(audioCtx.destination);
 masterInput.connect(masterOutput);
 
-const activeEffects = new Map(); // slotIndex -> { node, input?, output? }
+const activeEffects = new Map(); // slotIndex -> AudioWorkletNode
+const persistentEffects = new Map(); // slotIndex -> AudioWorkletNode (always in chain)
 
 // === EFFECTS ===
 
-function generateImpulseResponse(channels, duration, decay) {
-  const length = audioCtx.sampleRate * duration;
-  const buffer = audioCtx.createBuffer(channels, length, audioCtx.sampleRate);
-  for (let ch = 0; ch < channels; ch++) {
-    const data = buffer.getChannelData(ch);
-    for (let i = 0; i < length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
-    }
-  }
-  return buffer;
-}
-
-function makeDistortionCurve(amount) {
-  const samples = 44100;
-  const curve = new Float32Array(samples);
-  for (let i = 0; i < samples; i++) {
-    const x = (i * 2) / samples - 1;
-    curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
-  }
-  return curve;
-}
 
 const EFFECTS = {
   highpass: {
     label: 'High Pass',
-    create: () => {
-      const node = audioCtx.createBiquadFilter();
-      node.type = 'highpass';
-      node.frequency.value = 1000;
-      node.Q.value = 1;
-      return node;
-    }
+    create: () => new AudioWorkletNode(audioCtx, 'highpass-processor'),
   },
   lowpass: {
     label: 'Low Pass',
-    create: () => {
-      const node = audioCtx.createBiquadFilter();
-      node.type = 'lowpass';
-      node.frequency.value = 800;
-      node.Q.value = 1;
-      return node;
-    }
+    create: () => new AudioWorkletNode(audioCtx, 'lowpass-processor'),
   },
   reverb: {
     label: 'Reverb',
-    create: () => {
-      const dry = audioCtx.createGain();
-      dry.gain.value = 0.6;
-      const wet = audioCtx.createGain();
-      wet.gain.value = 0.4;
-      const convolver = audioCtx.createConvolver();
-      convolver.buffer = generateImpulseResponse(2, 2.5, 3);
-      const input = audioCtx.createGain();
-      const output = audioCtx.createGain();
-      input.connect(dry);
-      input.connect(convolver);
-      convolver.connect(wet);
-      dry.connect(output);
-      wet.connect(output);
-      return { input, output };
-    }
+    create: () => new AudioWorkletNode(audioCtx, 'reverb-processor'),
   },
   distortion: {
     label: 'Distortion',
-    create: () => {
-      const node = audioCtx.createWaveShaper();
-      node.curve = makeDistortionCurve(400);
-      node.oversample = '4x';
-      return node;
-    }
+    create: () => new AudioWorkletNode(audioCtx, 'distortion-processor'),
   },
   delay: {
     label: 'Delay',
-    create: () => {
-      const input = audioCtx.createGain();
-      const output = audioCtx.createGain();
-      const dry = audioCtx.createGain();
-      dry.gain.value = 0.7;
-      const wet = audioCtx.createGain();
-      wet.gain.value = 0.5;
-      const delay = audioCtx.createDelay();
-      delay.delayTime.value = 0.3;
-      const feedback = audioCtx.createGain();
-      feedback.gain.value = 0.35;
-      input.connect(dry);
-      input.connect(delay);
-      delay.connect(feedback);
-      feedback.connect(delay);
-      delay.connect(wet);
-      dry.connect(output);
-      wet.connect(output);
-      return { input, output };
-    }
+    create: () => new AudioWorkletNode(audioCtx, 'delay-processor'),
   },
   bitcrusher: {
     label: 'Bitcrusher',
-    create: () => {
-      return new AudioWorkletNode(audioCtx, 'bitcrusher-processor');
-    }
+    create: () => new AudioWorkletNode(audioCtx, 'bitcrusher-processor'),
+  },
+  stutter: {
+    label: 'Stutter',
+    persistent: true,
+    create: () => new AudioWorkletNode(audioCtx, 'stutter-processor'),
   },
 };
 
 function rebuildEffectChain() {
-  // disconnect masterInput from everything
   masterInput.disconnect();
-  // disconnect all active effect nodes
-  for (const entry of activeEffects.values()) {
-    const node = entry.input || entry;
+  for (const node of activeEffects.values()) {
     try { node.disconnect(); } catch {}
-    if (entry.output) try { entry.output.disconnect(); } catch {}
+  }
+  for (const node of persistentEffects.values()) {
+    try { node.disconnect(); } catch {}
   }
 
-  if (activeEffects.size === 0) {
+  // Collect all nodes: persistent (always in chain) + active
+  const allNodes = [...persistentEffects.values(), ...activeEffects.values()];
+
+  if (allNodes.length === 0) {
     masterInput.connect(masterOutput);
     return;
   }
 
-  // chain: masterInput → effect1 → effect2 → ... → masterOutput
-  const nodes = Array.from(activeEffects.values());
+  // chain: masterInput → node1 → node2 → ... → masterOutput
   let prev = masterInput;
-  for (const entry of nodes) {
-    const input = entry.input || entry;
-    const output = entry.output || entry;
-    prev.connect(input);
-    prev = output;
+  for (const node of allNodes) {
+    prev.connect(node);
+    prev = node;
   }
   prev.connect(masterOutput);
+}
+
+function ensurePersistentEffect(i) {
+  const slot = slots[i];
+  if (!slot.effect) return;
+  const def = EFFECTS[slot.effect];
+  if (!def || !def.persistent) return;
+  if (persistentEffects.has(i)) return;
+  const node = def.create();
+  persistentEffects.set(i, node);
+  rebuildEffectChain();
+}
+
+function removePersistentEffect(i) {
+  const node = persistentEffects.get(i);
+  if (!node) return;
+  persistentEffects.delete(i);
+  try { node.disconnect(); } catch {}
+  rebuildEffectChain();
 }
 
 function activateEffect(i) {
   const slot = slots[i];
   if (!slot.effect || !EFFECTS[slot.effect]) return;
-  if (activeEffects.has(i)) return; // already active
-  const node = EFFECTS[slot.effect].create();
-  activeEffects.set(i, node);
-  rebuildEffectChain();
+  const def = EFFECTS[slot.effect];
+
+  if (def.persistent) {
+    ensurePersistentEffect(i);
+    const node = persistentEffects.get(i);
+    if (node) node.port.postMessage({ type: 'activate', rate: 0.1 });
+  } else {
+    if (activeEffects.has(i)) return;
+    const node = def.create();
+    activeEffects.set(i, node);
+    rebuildEffectChain();
+  }
   slotElements[i].classList.add('playing-effect');
 }
 
 function deactivateEffect(i) {
-  const entry = activeEffects.get(i);
-  if (!entry) return;
-  activeEffects.delete(i);
-  // disconnect the removed node
-  const input = entry.input || entry;
-  const output = entry.output || entry;
-  try { input.disconnect(); } catch {}
-  if (entry.output) try { output.disconnect(); } catch {}
-  rebuildEffectChain();
+  const slot = slots[i];
+  const def = slot.effect && EFFECTS[slot.effect];
+
+  if (def && def.persistent) {
+    const node = persistentEffects.get(i);
+    if (node) node.port.postMessage({ type: 'deactivate' });
+  } else {
+    const node = activeEffects.get(i);
+    if (!node) return;
+    activeEffects.delete(i);
+    try { node.disconnect(); } catch {}
+    rebuildEffectChain();
+  }
   slotElements[i].classList.remove('playing-effect');
 }
 
@@ -267,6 +229,14 @@ function renderSlot(i) {
   const el = slotElements[i];
   const slot = slots[i];
   const select = el.querySelector('select');
+
+  // manage persistent effect nodes (e.g. stutter needs to always be in the chain)
+  const def = slot.effect && EFFECTS[slot.effect];
+  if (def && def.persistent && slot.mode === 'effect') {
+    ensurePersistentEffect(i);
+  } else {
+    removePersistentEffect(i);
+  }
 
   // update mode class — only show border if slot has content or is stop/effect
   el.classList.remove('mode-song', 'mode-oneshot', 'mode-stop', 'mode-effect');
@@ -988,10 +958,21 @@ audioDeviceSelect.addEventListener('change', async () => {
 
 async function init() {
   // register audio worklets
-  try {
-    await audioCtx.audioWorklet.addModule('bitcrusher-processor.js');
-  } catch (err) {
-    console.error('Failed to load bitcrusher worklet:', err);
+  const worklets = [
+    'highpass-processor.js',
+    'lowpass-processor.js',
+    'reverb-processor.js',
+    'distortion-processor.js',
+    'delay-processor.js',
+    'bitcrusher-processor.js',
+    'stutter-processor.js',
+  ];
+  for (const file of worklets) {
+    try {
+      await audioCtx.audioWorklet.addModule(file);
+    } catch (err) {
+      console.error(`Failed to load worklet ${file}:`, err);
+    }
   }
 
   buildUI();
