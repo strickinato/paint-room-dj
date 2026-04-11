@@ -62,6 +62,20 @@ const EFFECTS = {
     persistent: true,
     create: () => new AudioWorkletNode(audioCtx, 'stutter-processor'),
   },
+  sweepup: {
+    label: 'Sweep Up',
+    persistent: true,
+    create: () => new AudioWorkletNode(audioCtx, 'filtersweep-processor', {
+      processorOptions: { direction: 'up' },
+    }),
+  },
+  sweepdown: {
+    label: 'Sweep Down',
+    persistent: true,
+    create: () => new AudioWorkletNode(audioCtx, 'filtersweep-processor', {
+      processorOptions: { direction: 'down' },
+    }),
+  },
 };
 
 function rebuildEffectChain() {
@@ -966,6 +980,7 @@ async function init() {
     'delay-processor.js',
     'bitcrusher-processor.js',
     'stutter-processor.js',
+    'filtersweep-processor.js',
   ];
   for (const file of worklets) {
     try {

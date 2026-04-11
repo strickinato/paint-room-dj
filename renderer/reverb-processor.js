@@ -8,14 +8,14 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const sr = sampleRate;
     return {
       combs: [
-        this._makeComb(Math.round(sr * 0.0297), 0.84),
-        this._makeComb(Math.round(sr * 0.0371), 0.82),
-        this._makeComb(Math.round(sr * 0.0411), 0.80),
-        this._makeComb(Math.round(sr * 0.0437), 0.78),
+        this._makeComb(Math.round(sr * 0.0557), 0.90),
+        this._makeComb(Math.round(sr * 0.0693), 0.88),
+        this._makeComb(Math.round(sr * 0.0812), 0.86),
+        this._makeComb(Math.round(sr * 0.0907), 0.84),
       ],
       allpasses: [
-        this._makeAllpass(Math.round(sr * 0.005)),
-        this._makeAllpass(Math.round(sr * 0.0017)),
+        this._makeAllpass(Math.round(sr * 0.012)),
+        this._makeAllpass(Math.round(sr * 0.004)),
       ],
     };
   }
@@ -30,7 +30,7 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     return [
-      { name: 'mix', defaultValue: 0.35, minValue: 0, maxValue: 1 },
+      { name: 'mix', defaultValue: 0.5, minValue: 0, maxValue: 1 },
     ];
   }
 
