@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
   fileExists: (filePath) => ipcRenderer.invoke('fs:fileExists', filePath),
   copyIntoProject: (projectDir, sourcePath) => ipcRenderer.invoke('fs:copyIntoProject', projectDir, sourcePath),
+  listAudioFiles: (projectDir) => ipcRenderer.invoke('fs:listAudioFiles', projectDir),
   getFilePath: (file) => webUtils.getPathForFile(file),
   getProjectDir: () => ipcRenderer.invoke('prefs:getProjectDir'),
   setProjectDir: (dir) => ipcRenderer.invoke('prefs:setProjectDir', dir),

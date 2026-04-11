@@ -117,6 +117,17 @@ ipcMain.handle('fs:copyIntoProject', async (_event, projectDir, sourceAbsPath) =
   return path.relative(projectDir, finalDest);
 });
 
+const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.ogg', '.flac', '.aac', '.m4a']);
+
+ipcMain.handle('fs:listAudioFiles', async (_event, projectDir) => {
+  try {
+    const entries = await fs.readdir(projectDir);
+    return entries.filter(name => AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase())).sort();
+  } catch {
+    return [];
+  }
+});
+
 ipcMain.handle('dialog:openFile', async (_event, options) => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],

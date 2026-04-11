@@ -39,6 +39,23 @@ function updateProjectUI() {
   }
 }
 
+async function refreshMediaList() {
+  const list = document.getElementById('media-list');
+  list.innerHTML = '';
+  if (!projectDir) return;
+  const files = await window.electronAPI.listAudioFiles(projectDir);
+  for (const filename of files) {
+    const div = document.createElement('div');
+    div.className = 'media-item';
+    div.textContent = filename;
+    div.draggable = true;
+    div.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/media-filename', filename);
+    });
+    list.appendChild(div);
+  }
+}
+
 async function loadSlotAudio(i) {
   const slot = slots[i];
   if (!slot.file || !slot.file.onDisk) return;
@@ -122,7 +139,26 @@ function renderSlot(i) {
     div.appendChild(label);
   }
 
+  // remove old X button
+  const oldRemove = el.querySelector('.slot-remove');
+  if (oldRemove) oldRemove.remove();
+
   el.appendChild(div);
+
+  if (slot.file) {
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'slot-remove';
+    removeBtn.textContent = 'x';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      stopSlot(i);
+      slots[i].file = null;
+      renderSlot(i);
+      autosave();
+    });
+    el.appendChild(removeBtn);
+  }
+
   el.title = slot.file ? slot.file.path : 'empty';
   select.value = slot.mode;
 }
@@ -158,6 +194,17 @@ function buildUI() {
 
         el.appendChild(select);
 
+        // make slot draggable for slot-to-slot drag
+        el.draggable = true;
+        el.addEventListener('dragstart', (e) => {
+          if (!slots[i].file) {
+            e.preventDefault();
+            return;
+          }
+          e.dataTransfer.setData('text/slot-index', String(i));
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
         // drag and drop
         el.addEventListener('dragover', (e) => {
           e.preventDefault();
@@ -172,6 +219,37 @@ function buildUI() {
           e.stopPropagation();
           el.classList.remove('dragover');
 
+          // 1) slot-to-slot drag
+          const sourceSlotStr = e.dataTransfer.getData('text/slot-index');
+          if (sourceSlotStr !== '') {
+            const srcIdx = parseInt(sourceSlotStr, 10);
+            if (srcIdx === i) return;
+            // swap slot data
+            const srcFile = slots[srcIdx].file;
+            const srcMode = slots[srcIdx].mode;
+            slots[srcIdx].file = slots[i].file;
+            slots[srcIdx].mode = slots[i].mode;
+            slots[i].file = srcFile;
+            slots[i].mode = srcMode;
+            renderSlot(srcIdx);
+            renderSlot(i);
+            autosave();
+            return;
+          }
+
+          // 2) media list drag
+          const mediaFilename = e.dataTransfer.getData('text/media-filename');
+          if (mediaFilename) {
+            const absPath = await window.electronAPI.resolvePath(projectDir, mediaFilename);
+            const exists = await window.electronAPI.fileExists(absPath);
+            slots[i].file = { path: absPath, onDisk: exists, buffer: null };
+            renderSlot(i);
+            autosave();
+            loadSlotAudio(i);
+            return;
+          }
+
+          // 3) external file drop
           const file = e.dataTransfer.files[0];
           if (!file) return;
           const sourcePath = window.electronAPI.getFilePath(file);
@@ -188,6 +266,7 @@ function buildUI() {
           renderSlot(i);
           autosave();
           loadSlotAudio(i);
+          refreshMediaList();
         });
 
         slotElements.push(el);
@@ -404,6 +483,7 @@ async function switchProject(dir) {
   projectDir = dir;
   updateProjectUI();
   await restoreState();
+  refreshMediaList();
 }
 
 document.getElementById('btn-change-project').addEventListener('click', async () => {
@@ -651,6 +731,7 @@ async function init() {
 
   if (projectDir) {
     await restoreState();
+    refreshMediaList();
   }
 
   initMidi();
