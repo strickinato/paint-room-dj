@@ -47,6 +47,7 @@ const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
 }));
 
 let projectDir = null;
+let presets = {};
 
 // === AUDIO ===
 
@@ -867,20 +868,44 @@ async function serializeState() {
 
 async function saveState() {
   if (!projectDir) return;
-  const state = await serializeState();
-  await window.electronAPI.saveState(projectDir, state);
+  const slotData = await serializeState();
+  const blob = { slots: slotData, presets: presets };
+  await window.electronAPI.saveState(projectDir, blob);
 }
 
 async function restoreState() {
   if (!projectDir) return;
-  const saved = await window.electronAPI.loadState(projectDir);
-  if (!saved || !Array.isArray(saved)) return;
+  const raw = await window.electronAPI.loadState(projectDir);
+  if (!raw) return;
 
+  let saved;
+  if (Array.isArray(raw)) {
+    // migrate old format (bare array)
+    saved = raw;
+    presets = {};
+  } else if (raw.slots) {
+    saved = raw.slots;
+    presets = raw.presets || {};
+  } else {
+    return;
+  }
+
+  await applySlotData(saved);
+  renderPresets();
+  sendColors();
+}
+
+async function applySlotData(saved) {
+  if (!saved || !Array.isArray(saved)) return;
   for (let i = 0; i < Math.min(saved.length, TOTAL_SLOTS); i++) {
     const entry = saved[i];
     if (!entry) continue;
+    // deactivate any active effect before overwriting
+    if (slots[i].mode === 'effect') deactivateEffect(i);
+    if (activeSources.has(i)) stopSlot(i);
     slots[i].mode = entry.mode || 'song';
     slots[i].effect = entry.effect || null;
+    slots[i].file = null;
     if (entry.file && entry.file.path) {
       const absPath = await window.electronAPI.resolvePath(projectDir, entry.file.path);
       const exists = await window.electronAPI.fileExists(absPath);
@@ -888,13 +913,81 @@ async function restoreState() {
     }
     renderSlot(i);
   }
-  sendColors();
 }
 
 function autosave() {
   saveState();
   sendColors();
 }
+
+// === PRESETS ===
+
+async function savePreset(name) {
+  presets[name] = await serializeState();
+  autosave();
+  renderPresets();
+}
+
+async function loadPreset(name) {
+  const data = presets[name];
+  if (!data) return;
+  await applySlotData(data);
+  autosave();
+}
+
+function deletePreset(name) {
+  delete presets[name];
+  autosave();
+  renderPresets();
+}
+
+function renderPresets() {
+  const list = document.getElementById('preset-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const name of Object.keys(presets)) {
+    const item = document.createElement('div');
+    item.className = 'preset-item';
+
+    const label = document.createElement('span');
+    label.className = 'preset-name';
+    label.textContent = name;
+    label.addEventListener('click', () => loadPreset(name));
+
+    const overwriteBtn = document.createElement('button');
+    overwriteBtn.textContent = '<<';
+    overwriteBtn.title = 'Overwrite with current';
+    overwriteBtn.addEventListener('click', () => {
+      if (confirm(`Overwrite preset "${name}" with current configuration?`)) savePreset(name);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'x';
+    deleteBtn.title = 'Delete preset';
+    deleteBtn.addEventListener('click', () => {
+      if (confirm(`Delete preset "${name}"?`)) deletePreset(name);
+    });
+
+    item.appendChild(label);
+    item.appendChild(overwriteBtn);
+    item.appendChild(deleteBtn);
+    list.appendChild(item);
+  }
+}
+
+document.getElementById('btn-add-preset').addEventListener('click', () => {
+  const input = document.getElementById('preset-name-input');
+  const name = input.value.trim();
+  if (!name) return;
+  savePreset(name);
+  input.value = '';
+});
+
+document.getElementById('preset-name-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('btn-add-preset').click();
+  }
+});
 
 // === PROJECT DIRECTORY ===
 

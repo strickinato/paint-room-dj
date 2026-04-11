@@ -126,13 +126,53 @@ body {
 #sidebar {
   width: 300px;
   flex-shrink: 0;
-  padding: 6px;
+  padding: 8px;
   border-right: 1px solid var(--page-border);
   box-sizing: border-box;
+  overflow-y: auto;
 }
 
 #sidebar button {
+  font-size: 12px;
+}
+
+#sidebar hr {
+  border: none;
+  border-top: 1px solid var(--page-border-light);
+  margin: 6px 0;
+}
+
+#sidebar details {
+  margin: 0;
+}
+
+#sidebar details summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  padding: 3px 0;
+  color: var(--page-fg);
+}
+
+#sidebar details summary b {
   font-size: 13px;
+}
+
+#sidebar details > :not(summary) {
+  padding-left: 8px;
+}
+
+#sidebar details[open] > summary {
+  margin-bottom: 4px;
+}
+
+#controls-section {
+  display: flex;
+  gap: 4px;
+}
+
+#controls-section button {
+  padding: 3px 8px;
 }
 
 #btn-play-stop:disabled {
@@ -320,23 +360,90 @@ body {
   background: var(--button-bg);
 }
 
-#sidebar hr {
-  border: none;
-  border-top: 1px solid var(--page-border);
-  margin: 10px 0;
-}
-
-#project-section summary,
-#audio-section summary,
-#midi-section summary {
-  cursor: pointer;
-  user-select: none;
+#project-dir-name {
+  font-size: 11px;
+  word-break: break-all;
 }
 
 #project-dir-summary,
 #audio-device-summary {
-  font-size: 12px;
+  font-size: 11px;
+  color: var(--page-text-muted);
+  font-weight: normal;
+}
+
+#preset-section {
+  margin-top: 8px;
+  padding-left: 0 !important;
+  border-top: 1px solid var(--page-border-light);
+  padding-top: 6px;
+}
+
+#preset-section b {
+  font-size: 11px;
   color: var(--page-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#preset-controls {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+#preset-name-input {
+  flex: 1;
+  font-size: 12px;
+  font-family: inherit;
+  min-width: 0;
+}
+
+#btn-add-preset {
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+#preset-list {
+  margin-top: 4px;
+}
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--page-border-light);
+}
+
+.preset-item:hover {
+  background: var(--page-bg-hover);
+}
+
+.preset-name {
+  flex: 1;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-name:hover {
+  text-decoration: underline;
+}
+
+.preset-item button {
+  font-size: 11px;
+  padding: 0 3px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--button-border);
+  color: var(--page-fg);
+}
+
+.preset-item button:hover {
+  background: var(--button-bg);
 }
 
 .status-dot {
@@ -374,13 +481,15 @@ body {
 
 #audio-device-select,
 #midi-device-select {
-  font-size: 13px;
-  margin: 4px 0;
+  font-size: 12px;
+  font-family: inherit;
+  margin: 2px 0;
   max-width: 100%;
+  display: block;
 }
 
 #midi-device-name {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 #midi-log {
@@ -392,11 +501,6 @@ body {
   height: 120px;
   overflow-y: auto;
   white-space: pre;
-}
-
-#media-section summary {
-  cursor: pointer;
-  user-select: none;
 }
 
 #media-list {
@@ -423,13 +527,6 @@ body {
 
 .media-item:active {
   cursor: grabbing;
-}
-
-#effects-section summary,
-#advanced-section summary,
-#midi-log-section summary {
-  cursor: pointer;
-  user-select: none;
 }
 
 #btn-autoload-effects {
