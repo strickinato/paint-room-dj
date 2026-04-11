@@ -214,13 +214,15 @@ function basename(p) {
   return p.split('/').pop().split('\\').pop();
 }
 
+const projectDirSummary = document.getElementById('project-dir-summary');
+
 function updateProjectUI() {
   if (projectDir) {
-    projectDirName.textContent = basename(projectDir);
-    projectDirName.title = projectDir;
+    projectDirSummary.textContent = '(' + basename(projectDir) + ')';
+    projectDirName.textContent = projectDir;
   } else {
-    projectDirName.textContent = '(none)';
-    projectDirName.title = '';
+    projectDirSummary.textContent = '(none)';
+    projectDirName.textContent = '';
   }
 }
 
@@ -255,6 +257,43 @@ function buildEffectsList() {
   }
 }
 
+function autoloadEffects() {
+  // Fill bank 4 (grid 3, slots 48-63) with all effects + a kill button
+  const bankStart = 3 * GRID_SIZE; // slot 48
+  const effectKeys = Object.keys(EFFECTS); // already alphabetized
+
+  // Bottom-left of grid = row 3, col 0 = bankStart + 12
+  const killSlotIndex = bankStart + 12;
+
+  let effectIdx = 0;
+  for (let pos = 0; pos < GRID_SIZE; pos++) {
+    const i = bankStart + pos;
+    // Clear existing effect/audio state
+    if (slots[i].mode === 'effect') deactivateEffect(i);
+    if (activeSources.has(i)) stopSlot(i);
+
+    if (i === killSlotIndex) {
+      // Kill button
+      slots[i].mode = 'stop';
+      slots[i].file = null;
+      slots[i].effect = null;
+    } else if (effectIdx < effectKeys.length) {
+      slots[i].mode = 'effect';
+      slots[i].effect = effectKeys[effectIdx];
+      slots[i].file = null;
+      effectIdx++;
+    } else {
+      slots[i].mode = 'song';
+      slots[i].file = null;
+      slots[i].effect = null;
+    }
+    renderSlot(i);
+  }
+  autosave();
+}
+
+document.getElementById('btn-autoload-effects').addEventListener('click', autoloadEffects);
+
 async function loadSlotAudio(i) {
   const slot = slots[i];
   if (!slot.file || !slot.file.onDisk) return;
@@ -269,6 +308,7 @@ async function loadSlotAudio(i) {
   }
   renderSlot(i);
   sendColors();
+  updatePlayStopButton();
 }
 
 async function relocateSlotFile(i) {
@@ -588,6 +628,7 @@ function stopSlot(i) {
   }
   if (currentSongSlot === i) {
     currentSongSlot = null;
+    updatePlayStopButton();
   }
 }
 
@@ -628,6 +669,7 @@ function playSong(i) {
     if (currentSongSlot === i) {
       currentSongSlot = null;
       playNextSong(i);
+      updatePlayStopButton();
     }
   };
   source.start();
@@ -635,6 +677,7 @@ function playSong(i) {
   applyPlaybackRate();
   slotElements[i].classList.add('playing');
   currentSongSlot = i;
+  updatePlayStopButton();
 }
 
 function playOneshot(i) {
@@ -665,6 +708,7 @@ function killAllAudio() {
     deactivateEffect(i);
   }
   currentSongSlot = null;
+  updatePlayStopButton();
 }
 
 // === SLOT COMMANDS ===
@@ -790,7 +834,24 @@ document.getElementById('btn-change-project').addEventListener('click', async ()
   }
 });
 
-// === RELOAD ALL ===
+// === CONTROLS ===
+
+const btnPlayStop = document.getElementById('btn-play-stop');
+
+function updatePlayStopButton() {
+  const isPlaying = currentSongSlot !== null;
+  btnPlayStop.textContent = isPlaying ? 'Stop' : 'Play';
+  btnPlayStop.disabled = !isPlaying && getReadySongSlots(-1).length === 0;
+}
+
+btnPlayStop.addEventListener('click', () => {
+  if (currentSongSlot !== null) {
+    killAllAudio();
+  } else {
+    playNextSong(-1);
+  }
+  updatePlayStopButton();
+});
 
 document.getElementById('btn-reload-all').addEventListener('click', async () => {
   const promises = slots.map((slot, i) => {
@@ -800,20 +861,20 @@ document.getElementById('btn-reload-all').addEventListener('click', async () => 
   await Promise.all(promises);
 });
 
-document.getElementById('btn-kill-audio').addEventListener('click', () => {
-  killAllAudio();
-});
-
-document.getElementById('btn-send-colors').addEventListener('click', () => {
-  sendColors();
-});
-
 // === MIDI ===
 
 const midiStatusDot = document.getElementById('midi-status-dot');
+const midiActivityDot = document.getElementById('midi-activity-dot');
 const midiDeviceSelect = document.getElementById('midi-device-select');
 const midiDeviceName = document.getElementById('midi-device-name');
 const midiLog = document.getElementById('midi-log');
+
+let midiActivityTimeout = null;
+function pulseMidiActivity() {
+  midiActivityDot.classList.add('pulse');
+  clearTimeout(midiActivityTimeout);
+  midiActivityTimeout = setTimeout(() => midiActivityDot.classList.remove('pulse'), 80);
+}
 
 let midiAccess = null;
 let activeInput = null;
@@ -864,24 +925,38 @@ function midiLogAppend(text) {
   midiLog.scrollTop = midiLog.scrollHeight;
 }
 
+const MIDI_AUTO_CONNECT_NAME = 'Midi Fighter 3D';
+
+function updateMidiDot() {
+  midiStatusDot.classList.remove('connected-mf3d', 'connected-other');
+  if (activeInput) {
+    if (activeInput.name && activeInput.name.includes(MIDI_AUTO_CONNECT_NAME)) {
+      midiStatusDot.classList.add('connected-mf3d');
+    } else {
+      midiStatusDot.classList.add('connected-other');
+    }
+  }
+}
+
 function disconnectMidi() {
   if (activeInput) {
     activeInput.onmidimessage = null;
     activeInput = null;
   }
   activeOutput = null;
-  midiStatusDot.classList.remove('connected');
+  updateMidiDot();
   midiDeviceName.textContent = '';
 }
 
 function connectToInput(input) {
   disconnectMidi();
   activeInput = input;
-  midiStatusDot.classList.add('connected');
+  updateMidiDot();
   midiDeviceName.textContent = input.name;
   midiLogAppend('connected: ' + input.name);
 
   input.onmidimessage = (msg) => {
+    pulseMidiActivity();
     const hex = Array.from(msg.data).map(b => b.toString(16).padStart(2, '0')).join(' ');
     midiLogAppend(hex);
 
@@ -894,8 +969,6 @@ function connectToInput(input) {
     }
   };
 }
-
-const MIDI_AUTO_CONNECT_NAME = 'Midi Fighter 3D';
 
 function populateMidiDevices() {
   if (!midiAccess) return;
@@ -985,6 +1058,13 @@ async function initMidi() {
 // === AUDIO OUTPUT DEVICE ===
 
 const audioDeviceSelect = document.getElementById('audio-device-select');
+const audioDeviceSummary = document.getElementById('audio-device-summary');
+
+function updateAudioSummary() {
+  const selected = audioDeviceSelect.options[audioDeviceSelect.selectedIndex];
+  const label = selected ? selected.textContent : 'default';
+  audioDeviceSummary.textContent = '(' + label + ')';
+}
 
 async function populateAudioDevices() {
   const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1005,6 +1085,7 @@ async function populateAudioDevices() {
   if (currentValue) {
     audioDeviceSelect.value = currentValue;
   }
+  updateAudioSummary();
 }
 
 audioDeviceSelect.addEventListener('change', async () => {
@@ -1014,6 +1095,7 @@ audioDeviceSelect.addEventListener('change', async () => {
   } catch (err) {
     console.error('Failed to set audio output:', err);
   }
+  updateAudioSummary();
 });
 
 // === INIT ===

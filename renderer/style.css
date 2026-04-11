@@ -21,13 +21,13 @@ body {
   box-sizing: border-box;
 }
 
-#sidebar h1 {
-  font-size: 16px;
-  margin: 0 0 10px 0;
-}
-
 #sidebar button {
   font-size: 13px;
+}
+
+#btn-play-stop:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 #main {
@@ -190,6 +190,19 @@ body {
   margin: 10px 0;
 }
 
+#project-section summary,
+#audio-section summary,
+#midi-section summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+#project-dir-summary,
+#audio-device-summary {
+  font-size: 12px;
+  color: #666;
+}
+
 .status-dot {
   display: inline-block;
   width: 8px;
@@ -200,8 +213,27 @@ body {
   margin-left: 4px;
 }
 
-.status-dot.connected {
+.status-dot.connected-mf3d {
   background: #393;
+}
+
+.status-dot.connected-other {
+  background: #48f;
+}
+
+.activity-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  vertical-align: middle;
+  margin-left: 3px;
+  transition: background 0.05s;
+}
+
+.activity-dot.pulse {
+  background: #f90;
 }
 
 #audio-device-select,
@@ -227,9 +259,14 @@ body {
   white-space: pre;
 }
 
+#media-section summary {
+  cursor: pointer;
+  user-select: none;
+}
+
 #media-list {
   margin-top: 4px;
-  max-height: 200px;
+  max-height: 50vh;
   overflow-y: auto;
   border: 1px solid #ccc;
   background: #f9f9f9;
@@ -253,6 +290,18 @@ body {
   cursor: grabbing;
 }
 
+#effects-section summary,
+#advanced-section summary,
+#midi-log-section summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+#btn-autoload-effects {
+  font-size: 11px;
+  margin-left: 4px;
+}
+
 #effects-list {
   margin-top: 4px;
   border: 1px solid #ccc;
@@ -272,4 +321,19 @@ body {
 
 .effect-item:active {
   cursor: grabbing;
+}
+
+#branding {
+  position: fixed;
+  bottom: 0;
+  right: 12px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: #999;
+  background: #f5f5f5;
+  border-top: 1px solid #ddd;
+  border-left: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
 }

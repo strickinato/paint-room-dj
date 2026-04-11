@@ -9,65 +9,70 @@
 </head>
 <body>
   <div id="sidebar">
-    <h1>paint-room-dj</h1>
 
-    <div id="project-section">
-      <b>Project</b>
-      <br>
-      <span id="project-dir-name"></span>
-      <button id="btn-change-project">Change</button>
+    <div id="controls-section">
+      <button id="btn-play-stop">Play</button>
+      <button id="btn-reload-all">Reload All</button>
     </div>
 
     <hr>
 
-    <button id="btn-reload-all">Reload All</button>
-    <button id="btn-kill-audio">KILL AUDIO</button>
-    <button id="btn-send-colors">Send Colors</button>
+    <details id="project-section">
+      <summary><b>Project</b> <span id="project-dir-summary"></span></summary>
+      <span id="project-dir-name"></span>
+      <br>
+      <button id="btn-change-project">Change</button>
+    </details>
 
     <hr>
 
-    <div id="audio-section">
-      <b>Audio Out</b>
-      <br>
+    <details id="audio-section">
+      <summary><b>Audio</b> <span id="audio-device-summary"></span></summary>
       <select id="audio-device-select">
         <option value="">-- default --</option>
       </select>
-    </div>
+    </details>
 
     <hr>
 
-    <div id="midi-section">
-      <b>MIDI In</b>
-      <span id="midi-status-dot" class="status-dot"></span>
+    <details id="midi-section">
+      <summary><b>MIDI</b> <span id="midi-status-dot" class="status-dot"></span><span id="midi-activity-dot" class="activity-dot"></span></summary>
+      <span id="midi-device-name"></span>
       <br>
       <select id="midi-device-select">
         <option value="">-- select device --</option>
       </select>
-      <br>
-      <span id="midi-device-name"></span>
-      <details>
-        <summary>log</summary>
+    </details>
+
+    <hr>
+
+    <details id="media-section">
+      <summary><b>Media</b></summary>
+      <div id="media-list"></div>
+    </details>
+
+    <hr>
+
+    <details id="effects-section">
+      <summary><b>Effects</b></summary>
+      <button id="btn-autoload-effects">Auto-load bank 4</button>
+      <div id="effects-list"></div>
+    </details>
+
+    <hr>
+
+    <details id="advanced-section">
+      <summary><b>Advanced</b></summary>
+      <details id="midi-log-section">
+        <summary>MIDI Log</summary>
         <pre id="midi-log"></pre>
       </details>
-    </div>
-
-    <hr>
-
-    <div id="media-section">
-      <b>Media</b>
-      <div id="media-list"></div>
-    </div>
-
-    <hr>
-
-    <div id="effects-section">
-      <b>Effects</b>
-      <div id="effects-list"></div>
-    </div>
+    </details>
   </div>
   <div id="main">
     <div id="grids"></div>
   </div>
+  <div id="branding">Paint Room DJ &middot; strickinato</div>
   <script src="renderer.js"></script>
 </body>
 </html>
