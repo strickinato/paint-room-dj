@@ -191,8 +191,15 @@ function buildUI() {
           slots[i].mode = select.value;
           autosave();
         });
+        select.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
 
         el.appendChild(select);
+
+        el.addEventListener('click', () => {
+          triggerSlot(i);
+        });
 
         // make slot draggable for slot-to-slot drag
         el.draggable = true;
@@ -312,7 +319,7 @@ function stopSlot(i) {
     source.onended = null;
     try { source.stop(); } catch (e) { /* already stopped */ }
     activeSources.delete(i);
-    slotElements[i].classList.remove('playing');
+    slotElements[i].classList.remove('playing', 'playing-oneshot');
   }
   if (currentSongSlot === i) {
     currentSongSlot = null;
@@ -376,11 +383,11 @@ function playOneshot(i) {
   source.connect(audioCtx.destination);
   source.onended = () => {
     activeSources.delete(i);
-    slotElements[i].classList.remove('playing');
+    slotElements[i].classList.remove('playing-oneshot');
   };
   source.start();
   activeSources.set(i, source);
-  slotElements[i].classList.add('playing');
+  slotElements[i].classList.add('playing-oneshot');
 }
 
 function killAllAudio() {
@@ -390,27 +397,36 @@ function killAllAudio() {
   currentSongSlot = null;
 }
 
-function handleMidiNoteOn(note) {
-  const slotIndex = noteToSlot.get(note);
-  if (slotIndex === undefined) return;
-  const slot = slots[slotIndex];
+// === SLOT COMMANDS ===
+
+function triggerSlot(i) {
+  const slot = slots[i];
   if (slot.mode === 'song') {
-    playSong(slotIndex);
+    playSong(i);
   } else if (slot.mode === 'oneshot') {
-    playOneshot(slotIndex);
+    playOneshot(i);
   } else if (slot.mode === 'stop') {
     killAllAudio();
   }
 }
 
-function handleMidiNoteOff(note) {
-  const slotIndex = noteToSlot.get(note);
-  if (slotIndex === undefined) return;
-  const slot = slots[slotIndex];
-  // oneshot stops on note off; songs play to completion
+function releaseSlot(i) {
+  const slot = slots[i];
   if (slot.mode === 'oneshot') {
-    stopSlot(slotIndex);
+    stopSlot(i);
   }
+}
+
+function handleMidiNoteOn(note) {
+  const i = noteToSlot.get(note);
+  if (i === undefined) return;
+  triggerSlot(i);
+}
+
+function handleMidiNoteOff(note) {
+  const i = noteToSlot.get(note);
+  if (i === undefined) return;
+  releaseSlot(i);
 }
 
 // === STATE PERSISTENCE ===
