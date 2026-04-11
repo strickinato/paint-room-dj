@@ -1,3 +1,36 @@
+// === THEME ===
+
+const THEME_CYCLE = ['auto', 'dark', 'light'];
+const THEME_LABELS = { auto: 'Auto', dark: 'Dark', light: 'Light' };
+const darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme(pref) {
+  let resolved;
+  if (pref === 'auto') {
+    resolved = darkMQ.matches ? 'dark' : 'light';
+  } else {
+    resolved = pref;
+  }
+  document.documentElement.setAttribute('data-theme', resolved);
+}
+
+let themePref = localStorage.getItem('theme') || 'auto';
+applyTheme(themePref);
+
+darkMQ.addEventListener('change', () => {
+  if (themePref === 'auto') applyTheme('auto');
+});
+
+const btnTheme = document.getElementById('btn-theme');
+btnTheme.textContent = THEME_LABELS[themePref];
+btnTheme.addEventListener('click', () => {
+  const idx = THEME_CYCLE.indexOf(themePref);
+  themePref = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+  localStorage.setItem('theme', themePref);
+  applyTheme(themePref);
+  btnTheme.textContent = THEME_LABELS[themePref];
+});
+
 // === DATA MODEL ===
 
 const NUM_GRIDS = 4;
