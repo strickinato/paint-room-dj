@@ -372,10 +372,30 @@ function setupMarquee(label, wrap) {
   }
 }
 
+function clearSlot(i) {
+  if (slots[i].mode === 'effect') deactivateEffect(i);
+  if (activeSources.has(i)) stopSlot(i);
+  slots[i].mode = 'song';
+  slots[i].file = null;
+  slots[i].effect = null;
+  renderSlot(i);
+  autosave();
+}
+
+function convertToStop(i) {
+  if (slots[i].mode === 'effect') deactivateEffect(i);
+  if (activeSources.has(i)) stopSlot(i);
+  slots[i].mode = 'stop';
+  slots[i].file = null;
+  slots[i].effect = null;
+  renderSlot(i);
+  autosave();
+}
+
 function renderSlot(i) {
   const el = slotElements[i];
   const slot = slots[i];
-  const select = el.querySelector('select');
+  const controlsEl = el.querySelector('.slot-controls');
 
   // manage persistent effect nodes (e.g. stutter needs to always be in the chain)
   const def = slot.effect && EFFECTS[slot.effect];
@@ -391,14 +411,40 @@ function renderSlot(i) {
     el.classList.add('mode-' + slot.mode);
   }
 
-  // remove old content except the select
+  // remove old content
   const info = el.querySelector('.slot-info');
   if (info) info.remove();
 
   const div = document.createElement('div');
   div.className = 'slot-info';
 
-  if (slot.mode === 'effect') {
+  // rebuild controls
+  controlsEl.innerHTML = '';
+
+  const isEmpty = !slot.file && slot.mode !== 'stop' && !(slot.mode === 'effect' && slot.effect);
+
+  if (isEmpty) {
+    // EMPTY: just a "stop" button
+    div.innerHTML = '<span class="slot-label empty">&lt;empty&gt;</span>';
+    const stopBtn = document.createElement('button');
+    stopBtn.className = 'slot-ctrl-btn';
+    stopBtn.textContent = 'stop';
+    stopBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToStop(i); });
+    stopBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(stopBtn);
+
+  } else if (slot.mode === 'stop') {
+    // STOP: show label, clear button
+    div.innerHTML = '<span class="slot-label stop-label">STOP</span>';
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'slot-ctrl-btn';
+    clearBtn.textContent = 'clear';
+    clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearSlot(i); });
+    clearBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(clearBtn);
+
+  } else if (slot.mode === 'effect') {
+    // EFFECT: effect dropdown, clear, stop
     if (slot.effect && EFFECTS[slot.effect]) {
       const status = document.createElement('div');
       status.className = 'slot-status';
@@ -419,118 +465,159 @@ function renderSlot(i) {
       div.appendChild(wrap);
       div.appendChild(status);
       requestAnimationFrame(() => setupMarquee(label, wrap));
-    } else {
-      div.innerHTML = '<span class="slot-label empty">&lt;drag effect&gt;</span>';
     }
-  } else if (!slot.file) {
-    // not associated
-    div.innerHTML = '<span class="slot-label empty">&lt;empty&gt;</span>';
-  } else if (!slot.file.onDisk) {
-    // associated but file missing
-    const status = document.createElement('div');
-    status.className = 'slot-status';
-    const dot = document.createElement('span');
-    dot.className = 'slot-dot red';
-    const statusText = document.createElement('span');
-    statusText.className = 'slot-status-text';
-    statusText.textContent = 'missing';
-    statusText.classList.add('missing');
-    statusText.style.cursor = 'pointer';
-    statusText.style.textDecoration = 'underline';
-    statusText.style.color = 'var(--dot-red)';
-    statusText.addEventListener('click', () => relocateSlotFile(i));
-    status.appendChild(dot);
-    status.appendChild(statusText);
-    const wrap = document.createElement('div');
-    wrap.className = 'slot-label-wrap';
-    const label = document.createElement('span');
-    label.className = 'slot-label';
-    label.textContent = basename(slot.file.path);
-    div.title = basename(slot.file.path);
-    wrap.appendChild(label);
-    div.appendChild(wrap);
-    div.appendChild(status);
-    requestAnimationFrame(() => setupMarquee(label, wrap));
-  } else if (!slot.file.buffer) {
-    // on disk, not loaded
-    const status = document.createElement('div');
-    status.className = 'slot-status';
-    const dot = document.createElement('span');
-    dot.className = 'slot-dot yellow';
-    const btn = document.createElement('button');
-    btn.className = 'slot-load-btn';
-    btn.textContent = 'load';
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      loadSlotAudio(i);
-    });
-    status.appendChild(dot);
-    status.appendChild(btn);
-    const wrap = document.createElement('div');
-    wrap.className = 'slot-label-wrap';
-    const label = document.createElement('span');
-    label.className = 'slot-label';
-    label.textContent = basename(slot.file.path);
-    div.title = basename(slot.file.path);
-    wrap.appendChild(label);
-    div.appendChild(wrap);
-    div.appendChild(status);
-    requestAnimationFrame(() => setupMarquee(label, wrap));
-  } else {
-    // loaded and ready
-    const status = document.createElement('div');
-    status.className = 'slot-status';
-    const dot = document.createElement('span');
-    dot.className = 'slot-dot green';
-    const statusText = document.createElement('span');
-    statusText.className = 'slot-status-text';
-    statusText.textContent = 'ready';
-    status.appendChild(dot);
-    status.appendChild(statusText);
-    const wrap = document.createElement('div');
-    wrap.className = 'slot-label-wrap';
-    const label = document.createElement('span');
-    label.className = 'slot-label';
-    label.textContent = basename(slot.file.path);
-    div.title = basename(slot.file.path);
-    wrap.appendChild(label);
-    div.appendChild(wrap);
-    div.appendChild(status);
-    requestAnimationFrame(() => setupMarquee(label, wrap));
-  }
 
-  // remove old X button
-  const oldRemove = el.querySelector('.slot-remove');
-  if (oldRemove) oldRemove.remove();
-
-  el.appendChild(div);
-
-  const hasContent = slot.file || (slot.mode === 'effect' && slot.effect);
-  if (hasContent) {
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'slot-remove';
-    removeBtn.textContent = 'x';
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (slot.mode === 'effect') {
-        deactivateEffect(i);
-        slots[i].effect = null;
-      } else {
-        stopSlot(i);
-        slots[i].file = null;
-      }
+    // effect picker dropdown
+    const select = document.createElement('select');
+    select.className = 'slot-effect-select';
+    for (const [id, fx] of Object.entries(EFFECTS)) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = fx.label;
+      if (id === slot.effect) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => {
+      deactivateEffect(i);
+      slots[i].effect = select.value;
       renderSlot(i);
       autosave();
     });
-    el.appendChild(removeBtn);
+    select.addEventListener('click', (e) => e.stopPropagation());
+    select.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(select);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'slot-ctrl-btn';
+    clearBtn.textContent = 'clear';
+    clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearSlot(i); });
+    clearBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(clearBtn);
+
+    const stopBtn = document.createElement('button');
+    stopBtn.className = 'slot-ctrl-btn';
+    stopBtn.textContent = 'stop';
+    stopBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToStop(i); });
+    stopBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(stopBtn);
+
+  } else {
+    // SONG or ONESHOT: file info, mode dropdown, clear, stop
+    if (!slot.file) {
+      // shouldn't happen, but safety
+      div.innerHTML = '<span class="slot-label empty">&lt;empty&gt;</span>';
+    } else if (!slot.file.onDisk) {
+      const status = document.createElement('div');
+      status.className = 'slot-status';
+      const dot = document.createElement('span');
+      dot.className = 'slot-dot red';
+      const statusText = document.createElement('span');
+      statusText.className = 'slot-status-text';
+      statusText.textContent = 'missing';
+      statusText.classList.add('missing');
+      statusText.style.cursor = 'pointer';
+      statusText.style.textDecoration = 'underline';
+      statusText.style.color = 'var(--dot-red)';
+      statusText.addEventListener('click', () => relocateSlotFile(i));
+      status.appendChild(dot);
+      status.appendChild(statusText);
+      const wrap = document.createElement('div');
+      wrap.className = 'slot-label-wrap';
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      label.textContent = basename(slot.file.path);
+      div.title = basename(slot.file.path);
+      wrap.appendChild(label);
+      div.appendChild(wrap);
+      div.appendChild(status);
+      requestAnimationFrame(() => setupMarquee(label, wrap));
+    } else if (!slot.file.buffer) {
+      const status = document.createElement('div');
+      status.className = 'slot-status';
+      const dot = document.createElement('span');
+      dot.className = 'slot-dot yellow';
+      const btn = document.createElement('button');
+      btn.className = 'slot-load-btn';
+      btn.textContent = 'load';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        loadSlotAudio(i);
+      });
+      status.appendChild(dot);
+      status.appendChild(btn);
+      const wrap = document.createElement('div');
+      wrap.className = 'slot-label-wrap';
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      label.textContent = basename(slot.file.path);
+      div.title = basename(slot.file.path);
+      wrap.appendChild(label);
+      div.appendChild(wrap);
+      div.appendChild(status);
+      requestAnimationFrame(() => setupMarquee(label, wrap));
+    } else {
+      const status = document.createElement('div');
+      status.className = 'slot-status';
+      const dot = document.createElement('span');
+      dot.className = 'slot-dot green';
+      const statusText = document.createElement('span');
+      statusText.className = 'slot-status-text';
+      statusText.textContent = 'ready';
+      status.appendChild(dot);
+      status.appendChild(statusText);
+      const wrap = document.createElement('div');
+      wrap.className = 'slot-label-wrap';
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      label.textContent = basename(slot.file.path);
+      div.title = basename(slot.file.path);
+      wrap.appendChild(label);
+      div.appendChild(wrap);
+      div.appendChild(status);
+      requestAnimationFrame(() => setupMarquee(label, wrap));
+    }
+
+    // song/oneshot mode toggle
+    const select = document.createElement('select');
+    select.className = 'slot-mode-select';
+    const opt1 = document.createElement('option');
+    opt1.value = 'song'; opt1.textContent = 'song';
+    const opt2 = document.createElement('option');
+    opt2.value = 'oneshot'; opt2.textContent = 'oneshot';
+    select.appendChild(opt1);
+    select.appendChild(opt2);
+    select.value = slot.mode;
+    select.addEventListener('change', () => {
+      slots[i].mode = select.value;
+      renderSlot(i);
+      autosave();
+    });
+    select.addEventListener('click', (e) => e.stopPropagation());
+    select.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(select);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'slot-ctrl-btn';
+    clearBtn.textContent = 'clear';
+    clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearSlot(i); });
+    clearBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(clearBtn);
+
+    const stopBtn = document.createElement('button');
+    stopBtn.className = 'slot-ctrl-btn';
+    stopBtn.textContent = 'stop';
+    stopBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToStop(i); });
+    stopBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(stopBtn);
   }
+
+  el.appendChild(div);
 
   if (slot.mode === 'effect' && slot.effect) {
     el.title = EFFECTS[slot.effect]?.label || slot.effect;
   } else {
     el.title = slot.file ? slot.file.path : 'empty';
   }
-  select.value = slot.mode;
 }
 
 function buildUI() {
@@ -544,36 +631,9 @@ function buildUI() {
         const el = document.createElement('div');
         el.className = 'slot';
 
-        const select = document.createElement('select');
-        const opt1 = document.createElement('option');
-        opt1.value = 'song';
-        opt1.textContent = 'song';
-        const opt2 = document.createElement('option');
-        opt2.value = 'oneshot';
-        opt2.textContent = 'oneshot';
-        const opt3 = document.createElement('option');
-        opt3.value = 'stop';
-        opt3.textContent = 'stop';
-        const opt4 = document.createElement('option');
-        opt4.value = 'effect';
-        opt4.textContent = 'effect';
-        select.appendChild(opt1);
-        select.appendChild(opt2);
-        select.appendChild(opt3);
-        select.appendChild(opt4);
-        select.addEventListener('change', () => {
-          slots[i].mode = select.value;
-          renderSlot(i);
-          autosave();
-        });
-        select.addEventListener('click', (e) => {
-          e.stopPropagation();
-        });
-        select.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-        });
-
-        el.appendChild(select);
+        const controls = document.createElement('div');
+        controls.className = 'slot-controls';
+        el.appendChild(controls);
 
         el.addEventListener('pointerdown', (e) => {
           if (e.button !== 0) return;

@@ -264,35 +264,44 @@ body {
   background-color: var(--effect-playing) !important;
 }
 
-.slot select {
+.slot-controls {
   position: absolute;
   bottom: 1px;
   left: 1px;
+  right: 1px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.slot-controls select {
   font-size: 11px;
   cursor: pointer;
   padding: 0 2px;
+  max-width: 70px;
 }
 
-.slot select option {
+.slot-controls select option {
   background: var(--page-bg);
   color: var(--page-fg);
 }
 
-.slot-remove {
-  position: absolute;
-  top: 0;
-  right: 0;
+.slot-ctrl-btn {
   font-size: 9px;
-  line-height: 1;
-  padding: 0 2px;
   cursor: pointer;
+  padding: 0 3px;
   background: transparent;
-  border: none;
+  border: 1px solid var(--page-text-muted);
   color: var(--page-text-muted);
+  border-radius: 2px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
-.slot-remove:hover {
-  color: var(--dot-red);
+.slot-ctrl-btn:hover {
+  color: var(--page-fg);
+  border-color: var(--page-fg);
 }
 
 .slot-info {
