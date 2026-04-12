@@ -1200,10 +1200,10 @@ let activeOutput = null;
 const MAX_LOG_LINES = 50;
 
 // MF3D LED color velocities (note-on channel 1)
-const COLOR_GREEN = 66;  // song
-const COLOR_BLUE = 78;   // oneshot
-const COLOR_RED = 13;    // stop
-const COLOR_YELLOW = 49; // effect
+const COLOR_GREEN = 67;  // song (bright)
+const COLOR_BLUE = 42;   // oneshot (bright)
+const COLOR_RED = 14;    // stop (bright)
+const COLOR_YELLOW = 50; // effect (bright)
 
 function sendColors() {
   if (!activeOutput) {
