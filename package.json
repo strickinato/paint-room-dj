@@ -15,6 +15,9 @@
       "category": "public.app-category.music",
       "target": "dmg"
     },
+    "directories": {
+      "output": "dist/build"
+    },
     "files": [
       "main.js",
       "preload.js",
