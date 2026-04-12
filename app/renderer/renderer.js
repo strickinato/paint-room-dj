@@ -1015,6 +1015,8 @@ function clearAllSlots() {
 
 async function switchProject(dir) {
   clearAllSlots();
+  presets = {};
+  renderPresets();
   projectDir = dir;
   updateProjectUI();
   await restoreState();
