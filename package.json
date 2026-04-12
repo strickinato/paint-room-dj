@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Minimal Electron app with file access, MIDI, and audio playback",
   "author": "Aaron Strick",
-  "main": "main.js",
+  "main": "app/main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --mac"
@@ -19,9 +19,9 @@
       "output": "dist/build"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "renderer/**/*",
+      "app/main.js",
+      "app/preload.js",
+      "app/renderer/**/*",
       "package.json"
     ]
   },
