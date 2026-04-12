@@ -437,6 +437,15 @@ function convertToStop(i) {
   autosave();
 }
 
+function convertToEffect(i) {
+  if (activeSources.has(i)) stopSlot(i);
+  slots[i].mode = 'effect';
+  slots[i].file = null;
+  slots[i].effect = Object.keys(EFFECTS)[0];
+  renderSlot(i);
+  autosave();
+}
+
 function renderSlot(i) {
   const el = slotElements[i];
   const slot = slots[i];
@@ -469,7 +478,7 @@ function renderSlot(i) {
   const isEmpty = !slot.file && slot.mode !== 'stop' && !(slot.mode === 'effect' && slot.effect);
 
   if (isEmpty) {
-    // EMPTY: just a "stop" button
+    // EMPTY: "stop" and "effect" buttons
     div.innerHTML = '<span class="slot-label empty">&lt;empty&gt;</span>';
     const stopBtn = document.createElement('button');
     stopBtn.className = 'slot-ctrl-btn';
@@ -477,6 +486,13 @@ function renderSlot(i) {
     stopBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToStop(i); });
     stopBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     controlsEl.appendChild(stopBtn);
+
+    const effectBtn = document.createElement('button');
+    effectBtn.className = 'slot-ctrl-btn';
+    effectBtn.textContent = 'effect';
+    effectBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToEffect(i); });
+    effectBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    controlsEl.appendChild(effectBtn);
 
   } else if (slot.mode === 'stop') {
     // STOP: show label, clear button
