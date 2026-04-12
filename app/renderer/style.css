@@ -185,7 +185,8 @@ body {
   padding: 1px 6px;
 }
 
-#theme-section {
+#theme-section,
+#view-section {
   font-size: 12px;
   margin-bottom: 6px;
 }
@@ -193,11 +194,34 @@ body {
 #main {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 6px;
   min-width: 0;
   box-sizing: border-box;
+}
+
+#bank-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.bank-tab {
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  color: var(--page-fg);
+  border-radius: 3px;
+}
+
+.bank-tab.active {
+  background: var(--page-fg);
+  color: var(--page-bg);
+  border-color: var(--page-fg);
 }
 
 #grids {
@@ -208,6 +232,19 @@ body {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 6px;
+}
+
+#grids.single-bank {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+#grids.single-bank .grid {
+  display: none;
+}
+
+#grids.single-bank .grid.active {
+  display: grid;
 }
 
 .grid {

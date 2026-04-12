@@ -34,6 +34,18 @@
 
     <hr>
 
+    <details id="view-settings-section">
+      <summary><b>View</b></summary>
+      <div id="theme-section">
+        Theme: <button id="btn-theme">Auto</button>
+      </div>
+      <div id="view-section">
+        Layout: <button id="btn-view-mode">All Banks</button>
+      </div>
+    </details>
+
+    <hr>
+
     <details id="audio-section">
       <summary><b>Audio</b> <span id="audio-device-summary"></span></summary>
       <select id="audio-device-select">
@@ -71,9 +83,6 @@
 
     <details id="advanced-section">
       <summary><b>Advanced</b></summary>
-      <div id="theme-section">
-        Theme: <button id="btn-theme">Auto</button>
-      </div>
       <details id="midi-log-section">
         <summary>MIDI Log</summary>
         <pre id="midi-log"></pre>
@@ -81,6 +90,12 @@
     </details>
   </div>
   <div id="main">
+    <div id="bank-tabs" style="display:none">
+      <button class="bank-tab active" data-bank="0">Bank 1</button>
+      <button class="bank-tab" data-bank="1">Bank 2</button>
+      <button class="bank-tab" data-bank="2">Bank 3</button>
+      <button class="bank-tab" data-bank="3">Bank 4</button>
+    </div>
     <div id="grids"></div>
   </div>
   <div id="branding">Paint Room DJ &middot; strickinato</div>

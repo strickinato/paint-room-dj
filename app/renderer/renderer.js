@@ -31,6 +31,52 @@ btnTheme.addEventListener('click', () => {
   btnTheme.textContent = THEME_LABELS[themePref];
 });
 
+// === VIEW MODE ===
+
+let viewMode = localStorage.getItem('viewMode') || 'all';
+let activeBank = 0;
+
+const bankTabsContainer = document.getElementById('bank-tabs');
+const bankTabs = bankTabsContainer.querySelectorAll('.bank-tab');
+const btnViewMode = document.getElementById('btn-view-mode');
+const gridsContainer = document.getElementById('grids');
+
+function applyViewMode() {
+  if (viewMode === 'single') {
+    bankTabsContainer.style.display = '';
+    gridsContainer.classList.add('single-bank');
+    const grids = gridsContainer.querySelectorAll('.grid');
+    grids.forEach((g, idx) => {
+      g.classList.toggle('active', idx === activeBank);
+    });
+    bankTabs.forEach(tab => {
+      tab.classList.toggle('active', parseInt(tab.dataset.bank) === activeBank);
+    });
+    btnViewMode.textContent = 'Single Bank';
+  } else {
+    bankTabsContainer.style.display = 'none';
+    gridsContainer.classList.remove('single-bank');
+    const grids = gridsContainer.querySelectorAll('.grid');
+    grids.forEach(g => g.classList.remove('active'));
+    btnViewMode.textContent = 'All Banks';
+  }
+}
+
+bankTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    activeBank = parseInt(tab.dataset.bank);
+    applyViewMode();
+  });
+});
+
+btnViewMode.addEventListener('click', () => {
+  viewMode = viewMode === 'all' ? 'single' : 'all';
+  localStorage.setItem('viewMode', viewMode);
+  applyViewMode();
+});
+
+applyViewMode();
+
 // === DATA MODEL ===
 
 const NUM_GRIDS = 4;
@@ -240,7 +286,6 @@ function deactivateEffect(i) {
 
 // === RENDERING ===
 
-const gridsContainer = document.getElementById('grids');
 const slotElements = []; // parallel array of DOM elements
 const projectDirName = document.getElementById('project-dir-name');
 
@@ -1382,6 +1427,7 @@ async function init() {
   }
 
   buildUI();
+  applyViewMode();
   buildNoteMap();
   buildEffectsList();
 
