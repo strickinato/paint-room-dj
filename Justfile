@@ -34,6 +34,9 @@ release: build
     # Upload with a stable filename so the download link doesn't change between versions
     cp "$dmg" dist/build/paint-room-dj.dmg
     echo "Creating GitHub release $tag..."
+    git tag -f "$tag"
+    git push origin "$tag" --force
+    gh release delete "$tag" --yes 2>/dev/null || true
     gh release create "$tag" dist/build/paint-room-dj.dmg --title "$tag" --generate-notes
     echo "Deploying landing page..."
     npx vercel deploy --prod
