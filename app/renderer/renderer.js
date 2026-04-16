@@ -851,6 +851,7 @@ function stopSlot(i) {
     slotElements[i].classList.remove('playing', 'playing-oneshot');
   }
   if (currentSongSlot === i) {
+    sendAnimation(i, 0);
     currentSongSlot = null;
     updatePlayStopButton();
   }
@@ -901,6 +902,7 @@ function playSong(i) {
   applyPlaybackRate();
   slotElements[i].classList.add('playing');
   currentSongSlot = i;
+  sendAnimation(i, ANIM_PULSE);
   updatePlayStopButton();
 }
 
@@ -1205,6 +1207,16 @@ const COLOR_RED = 13;    // stop
 const COLOR_YELLOW = 37; // effect
 const COLOR_GREEN = 49;  // song
 const COLOR_BLUE = 85;   // oneshot
+
+// MF3D LED animation (note-on channel 4, 0x93)
+const ANIM_PULSE = 45;
+
+function sendAnimation(slotIndex, velocity) {
+  if (!activeOutput) return;
+  const note = slotToNote.get(slotIndex);
+  if (note === undefined) return;
+  activeOutput.send([0x93, note, velocity]);
+}
 
 function sendColors() {
   if (!activeOutput) {
