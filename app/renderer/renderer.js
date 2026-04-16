@@ -1199,11 +1199,12 @@ let activeInput = null;
 let activeOutput = null;
 const MAX_LOG_LINES = 50;
 
-// MF3D LED color velocities (note-on channel 1)
-const COLOR_GREEN = 67;  // song (bright)
-const COLOR_BLUE = 42;   // oneshot (bright)
-const COLOR_RED = 14;    // stop (bright)
-const COLOR_YELLOW = 50; // effect (bright)
+// MF3D LED color velocities (note-on channel 3, 0x92)
+const COLOR_OFF = 0;     // empty (off)
+const COLOR_RED = 13;    // stop
+const COLOR_YELLOW = 37; // effect
+const COLOR_GREEN = 49;  // song
+const COLOR_BLUE = 85;   // oneshot
 
 function sendColors() {
   if (!activeOutput) {
@@ -1221,14 +1222,13 @@ function sendColors() {
     } else if (slot.mode === 'effect' && slot.effect) {
       velocity = COLOR_YELLOW;
     } else if (!slot.file) {
-      velocity = 0;
+      velocity = COLOR_OFF;
     } else if (slot.mode === 'song') {
       velocity = COLOR_GREEN;
     } else {
       velocity = COLOR_BLUE;
     }
-    // note-on on channel 1 (status 0x90)
-    activeOutput.send([0x90, note, velocity]);
+    activeOutput.send([0x92, note, velocity]);
     count++;
   }
   midiLogAppend('sent ' + count + ' LED colors');
