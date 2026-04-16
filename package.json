@@ -1,6 +1,6 @@
 {
   "name": "paint-room-dj",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Minimal Electron app with file access, MIDI, and audio playback",
   "author": "Aaron Strick",
   "main": "app/main.js",
