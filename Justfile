@@ -22,7 +22,7 @@ build:
     npx electron-builder --mac --arm64 --x64
 
 clean:
-  rm -rf dist/
+  rm -rf dist
 
 # Build, create GitHub release, deploy landing page
 release: clean build
