@@ -89,7 +89,8 @@ const TOTAL_SLOTS = NUM_GRIDS * GRID_SIZE;
 const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
   mode: 'song',
   file: null,
-  effect: null
+  effect: null,
+  includeInShuffle: false
 }));
 
 let projectDir = null;
@@ -322,6 +323,28 @@ async function refreshMediaList() {
   }
 }
 
+function refreshShuffleList() {
+  const list = document.getElementById('shuffle-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (let i = 0; i < TOTAL_SLOTS; i++) {
+    const s = slots[i];
+    if (s.mode === 'song' && s.includeInShuffle && s.file) {
+      const div = document.createElement('div');
+      div.className = 'shuffle-item';
+      const basename = s.file.path.split('/').pop() || s.file.path.split('\\').pop();
+      div.textContent = basename;
+      list.appendChild(div);
+    }
+  }
+  if (!list.children.length) {
+    const empty = document.createElement('div');
+    empty.className = 'shuffle-item shuffle-empty';
+    empty.textContent = 'No songs in shuffle';
+    list.appendChild(empty);
+  }
+}
+
 function buildEffectsList() {
   const list = document.getElementById('effects-list');
   for (const [id, def] of Object.entries(EFFECTS)) {
@@ -423,6 +446,7 @@ function clearSlot(i) {
   slots[i].mode = 'song';
   slots[i].file = null;
   slots[i].effect = null;
+  slots[i].includeInShuffle = false;
   renderSlot(i);
   autosave();
 }
@@ -433,6 +457,7 @@ function convertToStop(i) {
   slots[i].mode = 'stop';
   slots[i].file = null;
   slots[i].effect = null;
+  slots[i].includeInShuffle = false;
   renderSlot(i);
   autosave();
 }
@@ -548,19 +573,22 @@ function renderSlot(i) {
     select.addEventListener('pointerdown', (e) => e.stopPropagation());
     controlsEl.appendChild(select);
 
+    const btnRow = document.createElement('div');
+    btnRow.className = 'slot-btn-row';
     const clearBtn = document.createElement('button');
     clearBtn.className = 'slot-ctrl-btn';
     clearBtn.textContent = 'clear';
     clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearSlot(i); });
     clearBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    controlsEl.appendChild(clearBtn);
+    btnRow.appendChild(clearBtn);
 
     const stopBtn = document.createElement('button');
     stopBtn.className = 'slot-ctrl-btn';
     stopBtn.textContent = 'stop';
     stopBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToStop(i); });
     stopBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    controlsEl.appendChild(stopBtn);
+    btnRow.appendChild(stopBtn);
+    controlsEl.appendChild(btnRow);
 
   } else {
     // SONG or ONESHOT: file info, mode dropdown, clear, stop
@@ -657,19 +685,42 @@ function renderSlot(i) {
     select.addEventListener('pointerdown', (e) => e.stopPropagation());
     controlsEl.appendChild(select);
 
+    if (slot.mode === 'song') {
+      const shuffleLabel = document.createElement('label');
+      shuffleLabel.className = 'shuffle-checkbox-label';
+      const shuffleCheck = document.createElement('input');
+      shuffleCheck.type = 'checkbox';
+      shuffleCheck.checked = slot.includeInShuffle;
+      shuffleCheck.addEventListener('change', () => {
+        slots[i].includeInShuffle = shuffleCheck.checked;
+        autosave();
+        refreshShuffleList();
+      });
+      shuffleCheck.addEventListener('click', (e) => e.stopPropagation());
+      shuffleCheck.addEventListener('pointerdown', (e) => e.stopPropagation());
+      shuffleLabel.appendChild(shuffleCheck);
+      shuffleLabel.appendChild(document.createTextNode(' Include in shuffle?'));
+      shuffleLabel.addEventListener('click', (e) => e.stopPropagation());
+      shuffleLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      controlsEl.appendChild(shuffleLabel);
+    }
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'slot-btn-row';
     const clearBtn = document.createElement('button');
     clearBtn.className = 'slot-ctrl-btn';
     clearBtn.textContent = 'clear';
     clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearSlot(i); });
     clearBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    controlsEl.appendChild(clearBtn);
+    btnRow.appendChild(clearBtn);
 
     const stopBtn = document.createElement('button');
     stopBtn.className = 'slot-ctrl-btn';
     stopBtn.textContent = 'stop';
     stopBtn.addEventListener('click', (e) => { e.stopPropagation(); convertToStop(i); });
     stopBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    controlsEl.appendChild(stopBtn);
+    btnRow.appendChild(stopBtn);
+    controlsEl.appendChild(btnRow);
   }
 
   el.appendChild(div);
@@ -679,6 +730,8 @@ function renderSlot(i) {
   } else {
     el.title = slot.file ? slot.file.path : 'empty';
   }
+
+  refreshShuffleList();
 }
 
 function buildUI() {
@@ -862,7 +915,7 @@ function getReadySongSlots(excludeIndex) {
   for (let i = 0; i < TOTAL_SLOTS; i++) {
     if (i === excludeIndex) continue;
     const s = slots[i];
-    if (s.mode === 'song' && s.file && s.file.buffer) {
+    if (s.mode === 'song' && s.file && s.file.buffer && s.includeInShuffle) {
       result.push(i);
     }
   }
@@ -979,7 +1032,7 @@ async function serializeState() {
   const result = [];
   for (let i = 0; i < TOTAL_SLOTS; i++) {
     const slot = slots[i];
-    const entry = { mode: slot.mode, file: null, effect: slot.effect || null };
+    const entry = { mode: slot.mode, file: null, effect: slot.effect || null, includeInShuffle: slot.includeInShuffle || false };
     if (slot.file) {
       const relPath = await window.electronAPI.relativePath(projectDir, slot.file.path);
       entry.file = { path: relPath };
@@ -1028,6 +1081,7 @@ async function applySlotData(saved) {
     if (activeSources.has(i)) stopSlot(i);
     slots[i].mode = entry.mode || 'song';
     slots[i].effect = entry.effect || null;
+    slots[i].includeInShuffle = entry.includeInShuffle || false;
     slots[i].file = null;
     if (entry.file && entry.file.path) {
       const absPath = await window.electronAPI.resolvePath(projectDir, entry.file.path);

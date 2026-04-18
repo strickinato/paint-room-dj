@@ -309,7 +309,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 1px;
+  gap: 4px;
 }
 
 .slot-controls select {
@@ -324,10 +324,37 @@ body {
   color: var(--page-fg);
 }
 
+.slot-mode-select {
+  font-size: 12px !important;
+  max-width: 90px !important;
+  padding: 1px 3px !important;
+}
+
+.shuffle-checkbox-label {
+  font-size: 9px;
+  color: var(--page-text-muted);
+  padding-left: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.shuffle-checkbox-label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.slot-btn-row {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+}
+
 .slot-ctrl-btn {
   font-size: 9px;
   cursor: pointer;
-  padding: 0 3px;
+  padding: 0 6px;
   background: transparent;
   border: 1px solid var(--page-text-muted);
   color: var(--page-text-muted);
@@ -573,6 +600,39 @@ body {
 
 .media-item:active {
   cursor: grabbing;
+}
+
+#shuffle-section {
+  margin-top: 6px;
+  padding-left: 0 !important;
+}
+
+#shuffle-section summary {
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--page-text-secondary);
+}
+
+#shuffle-list {
+  margin-top: 2px;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid var(--page-border);
+  background: var(--panel-bg);
+}
+
+.shuffle-item {
+  padding: 1px 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--page-border-light);
+}
+
+.shuffle-item.shuffle-empty {
+  color: var(--page-text-muted);
+  font-style: italic;
 }
 
 #btn-autoload-effects {
