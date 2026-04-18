@@ -91,7 +91,8 @@ const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
   file: null,
   effect: null,
   includeInShuffle: false,
-  preserveTimestamp: false
+  preserveTimestamp: false,
+  onFinish: 'stop'
 }));
 
 let projectDir = null;
@@ -449,6 +450,7 @@ function clearSlot(i) {
   slots[i].effect = null;
   slots[i].includeInShuffle = false;
   slots[i].preserveTimestamp = false;
+  slots[i].onFinish = 'stop';
   savedTimestamps.delete(i);
   startContextTimes.delete(i);
   renderSlot(i);
@@ -463,6 +465,7 @@ function convertToStop(i) {
   slots[i].effect = null;
   slots[i].includeInShuffle = false;
   slots[i].preserveTimestamp = false;
+  slots[i].onFinish = 'stop';
   savedTimestamps.delete(i);
   startContextTimes.delete(i);
   renderSlot(i);
@@ -728,6 +731,29 @@ function renderSlot(i) {
       tsLabel.addEventListener('click', (e) => e.stopPropagation());
       tsLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
       controlsEl.appendChild(tsLabel);
+
+      const onFinishWrap = document.createElement('label');
+      onFinishWrap.className = 'shuffle-checkbox-label';
+      onFinishWrap.appendChild(document.createTextNode('On finish: '));
+      const onFinishSelect = document.createElement('select');
+      onFinishSelect.className = 'slot-onfinish-select';
+      for (const val of ['stop', 'shuffle', 'loop']) {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = val;
+        onFinishSelect.appendChild(opt);
+      }
+      onFinishSelect.value = slot.onFinish || 'stop';
+      onFinishSelect.addEventListener('change', () => {
+        slots[i].onFinish = onFinishSelect.value;
+        autosave();
+      });
+      onFinishSelect.addEventListener('click', (e) => e.stopPropagation());
+      onFinishSelect.addEventListener('pointerdown', (e) => e.stopPropagation());
+      onFinishWrap.appendChild(onFinishSelect);
+      onFinishWrap.addEventListener('click', (e) => e.stopPropagation());
+      onFinishWrap.addEventListener('pointerdown', (e) => e.stopPropagation());
+      controlsEl.appendChild(onFinishWrap);
     }
 
     const btnRow = document.createElement('div');
@@ -1003,8 +1029,18 @@ function playSong(i) {
     activeSources.delete(i);
     slotElements[i].classList.remove('playing');
     if (currentSongSlot === i) {
-      currentSongSlot = null;
-      playNextSong(i);
+      const finishBehavior = slot.onFinish || 'stop';
+      if (finishBehavior === 'loop') {
+        currentSongSlot = null;
+        playSong(i);
+      } else if (finishBehavior === 'shuffle') {
+        currentSongSlot = null;
+        playNextSong(i);
+      } else {
+        // 'stop' — just stop
+        currentSongSlot = null;
+        sendAnimation(i, 0);
+      }
       updatePlayStopButton();
     }
   };
@@ -1091,7 +1127,7 @@ async function serializeState() {
   const result = [];
   for (let i = 0; i < TOTAL_SLOTS; i++) {
     const slot = slots[i];
-    const entry = { mode: slot.mode, file: null, effect: slot.effect || null, includeInShuffle: slot.includeInShuffle || false, preserveTimestamp: slot.preserveTimestamp || false };
+    const entry = { mode: slot.mode, file: null, effect: slot.effect || null, includeInShuffle: slot.includeInShuffle || false, preserveTimestamp: slot.preserveTimestamp || false, onFinish: slot.onFinish || 'stop' };
     if (slot.file) {
       const relPath = await window.electronAPI.relativePath(projectDir, slot.file.path);
       entry.file = { path: relPath };
@@ -1142,6 +1178,7 @@ async function applySlotData(saved) {
     slots[i].effect = entry.effect || null;
     slots[i].includeInShuffle = entry.includeInShuffle || false;
     slots[i].preserveTimestamp = entry.preserveTimestamp || false;
+    slots[i].onFinish = entry.onFinish || 'stop';
     slots[i].file = null;
     if (entry.file && entry.file.path) {
       const absPath = await window.electronAPI.resolvePath(projectDir, entry.file.path);
