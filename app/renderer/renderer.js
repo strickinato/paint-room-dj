@@ -500,6 +500,9 @@ function renderSlot(i) {
     el.classList.add('mode-' + slot.mode);
   }
 
+  // clean up timestamp display reference
+  tsDisplayElements.delete(i);
+
   // remove old content
   const info = el.querySelector('.slot-info');
   if (info) info.remove();
@@ -674,6 +677,14 @@ function renderSlot(i) {
       div.appendChild(wrap);
       div.appendChild(status);
       requestAnimationFrame(() => setupMarquee(label, wrap));
+    }
+
+    // timestamp display for songs/oneshots with loaded audio
+    if (slot.file && slot.file.buffer) {
+      const tsDisplay = document.createElement('div');
+      tsDisplay.className = 'ts-display';
+      div.appendChild(tsDisplay);
+      tsDisplayElements.set(i, tsDisplay);
     }
 
     // song/oneshot mode toggle
@@ -950,6 +961,39 @@ let currentSongSlot = null; // index of currently playing song slot
 const savedTimestamps = new Map(); // slotIndex -> seconds
 // Per-slot context time when playback started (for computing elapsed time)
 const startContextTimes = new Map(); // slotIndex -> { contextTime, offset }
+
+function formatTimestamp(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
+function getCurrentPlaybackPosition(i) {
+  if (!startContextTimes.has(i)) return savedTimestamps.get(i) || 0;
+  const info = startContextTimes.get(i);
+  const source = activeSources.get(i);
+  const rate = source ? (source.playbackRate?.value || 1) : 1;
+  return info.offset + (audioCtx.currentTime - info.contextTime) * rate;
+}
+
+// Timestamp display elements keyed by slot index
+const tsDisplayElements = new Map();
+
+function updateTimestampDisplays() {
+  for (const [i, el] of tsDisplayElements) {
+    const slot = slots[i];
+    if (!slot.file || !slot.file.buffer) {
+      el.textContent = '';
+      continue;
+    }
+    const pos = getCurrentPlaybackPosition(i);
+    const dur = slot.file.buffer.duration;
+    el.textContent = formatTimestamp(pos) + '|' + formatTimestamp(dur);
+  }
+  requestAnimationFrame(updateTimestampDisplays);
+}
+requestAnimationFrame(updateTimestampDisplays);
 
 function stopSlot(i) {
   const source = activeSources.get(i);

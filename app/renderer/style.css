@@ -353,6 +353,13 @@ body {
   cursor: pointer;
 }
 
+.ts-display {
+  font-size: 8px;
+  color: var(--page-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .slot-onfinish-select {
   font-size: 9px !important;
   max-width: 70px !important;
