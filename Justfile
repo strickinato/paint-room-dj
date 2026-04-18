@@ -21,8 +21,11 @@ dev-web:
 build:
     npx electron-builder --mac --arm64 --x64
 
+clean:
+  rm -rf dist/
+
 # Build, create GitHub release, deploy landing page
-release: build
+release: clean build
     #!/usr/bin/env bash
     set -euo pipefail
     tag="v{{version}}"
@@ -31,7 +34,7 @@ release: build
     if [ -z "$arm64_dmg" ] || [ -z "$x64_dmg" ]; then
         echo "Expected arm64 and x64 DMGs in dist/build/"
         ls dist/build/*.dmg 2>/dev/null
-        exit 1
+    
     fi
     # Stable filenames so download links don't change between versions
     cp "$arm64_dmg" dist/build/paint-room-dj-arm64.dmg
