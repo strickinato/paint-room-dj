@@ -90,7 +90,8 @@ const slots = Array.from({ length: TOTAL_SLOTS }, () => ({
   mode: 'song',
   file: null,
   effect: null,
-  includeInShuffle: false
+  includeInShuffle: false,
+  preserveTimestamp: false
 }));
 
 let projectDir = null;
@@ -447,6 +448,9 @@ function clearSlot(i) {
   slots[i].file = null;
   slots[i].effect = null;
   slots[i].includeInShuffle = false;
+  slots[i].preserveTimestamp = false;
+  savedTimestamps.delete(i);
+  startContextTimes.delete(i);
   renderSlot(i);
   autosave();
 }
@@ -458,6 +462,9 @@ function convertToStop(i) {
   slots[i].file = null;
   slots[i].effect = null;
   slots[i].includeInShuffle = false;
+  slots[i].preserveTimestamp = false;
+  savedTimestamps.delete(i);
+  startContextTimes.delete(i);
   renderSlot(i);
   autosave();
 }
@@ -703,6 +710,24 @@ function renderSlot(i) {
       shuffleLabel.addEventListener('click', (e) => e.stopPropagation());
       shuffleLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
       controlsEl.appendChild(shuffleLabel);
+
+      const tsLabel = document.createElement('label');
+      tsLabel.className = 'shuffle-checkbox-label';
+      const tsCheck = document.createElement('input');
+      tsCheck.type = 'checkbox';
+      tsCheck.checked = slot.preserveTimestamp;
+      tsCheck.addEventListener('change', () => {
+        slots[i].preserveTimestamp = tsCheck.checked;
+        if (!tsCheck.checked) savedTimestamps.delete(i);
+        autosave();
+      });
+      tsCheck.addEventListener('click', (e) => e.stopPropagation());
+      tsCheck.addEventListener('pointerdown', (e) => e.stopPropagation());
+      tsLabel.appendChild(tsCheck);
+      tsLabel.appendChild(document.createTextNode(' Preserve timestamp?'));
+      tsLabel.addEventListener('click', (e) => e.stopPropagation());
+      tsLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      controlsEl.appendChild(tsLabel);
     }
 
     const btnRow = document.createElement('div');
@@ -895,9 +920,27 @@ function buildNoteMap() {
 
 let currentSongSlot = null; // index of currently playing song slot
 
+// Per-slot saved playback position (seconds into the audio buffer)
+const savedTimestamps = new Map(); // slotIndex -> seconds
+// Per-slot context time when playback started (for computing elapsed time)
+const startContextTimes = new Map(); // slotIndex -> { contextTime, offset }
+
 function stopSlot(i) {
   const source = activeSources.get(i);
   if (source) {
+    // Save timestamp if preserveTimestamp is enabled
+    if (slots[i].preserveTimestamp && startContextTimes.has(i)) {
+      const info = startContextTimes.get(i);
+      const elapsed = (audioCtx.currentTime - info.contextTime) * (source.playbackRate?.value || 1);
+      const position = info.offset + elapsed;
+      const duration = source.buffer ? source.buffer.duration : Infinity;
+      if (position < duration) {
+        savedTimestamps.set(i, position);
+      } else {
+        savedTimestamps.delete(i);
+      }
+    }
+    startContextTimes.delete(i);
     source.onended = null;
     try { source.stop(); } catch (e) { /* already stopped */ }
     activeSources.delete(i);
@@ -933,15 +976,30 @@ function playSong(i) {
   const slot = slots[i];
   if (!slot.file || !slot.file.buffer) return;
 
-  // stop any currently playing song
+  // If directly triggered on the same slot that's playing, restart from beginning
+  const isRetrigger = currentSongSlot === i;
+
+  // stop any currently playing song (this saves timestamp if preserveTimestamp is on)
   if (currentSongSlot !== null) {
     stopSlot(currentSongSlot);
   }
+
+  // Determine start offset: resume from saved position unless retriggering the same slot
+  let offset = 0;
+  if (slot.preserveTimestamp && !isRetrigger && savedTimestamps.has(i)) {
+    offset = savedTimestamps.get(i);
+  }
+  // Clear saved timestamp once we use it (or on fresh start)
+  savedTimestamps.delete(i);
+
+  const duration = slot.file.buffer.duration;
+  if (offset >= duration) offset = 0;
 
   const source = audioCtx.createBufferSource();
   source.buffer = slot.file.buffer;
   source.connect(masterInput);
   source.onended = () => {
+    startContextTimes.delete(i);
     activeSources.delete(i);
     slotElements[i].classList.remove('playing');
     if (currentSongSlot === i) {
@@ -950,7 +1008,8 @@ function playSong(i) {
       updatePlayStopButton();
     }
   };
-  source.start();
+  source.start(0, offset);
+  startContextTimes.set(i, { contextTime: audioCtx.currentTime, offset });
   activeSources.set(i, source);
   applyPlaybackRate();
   slotElements[i].classList.add('playing');
@@ -1032,7 +1091,7 @@ async function serializeState() {
   const result = [];
   for (let i = 0; i < TOTAL_SLOTS; i++) {
     const slot = slots[i];
-    const entry = { mode: slot.mode, file: null, effect: slot.effect || null, includeInShuffle: slot.includeInShuffle || false };
+    const entry = { mode: slot.mode, file: null, effect: slot.effect || null, includeInShuffle: slot.includeInShuffle || false, preserveTimestamp: slot.preserveTimestamp || false };
     if (slot.file) {
       const relPath = await window.electronAPI.relativePath(projectDir, slot.file.path);
       entry.file = { path: relPath };
@@ -1082,6 +1141,7 @@ async function applySlotData(saved) {
     slots[i].mode = entry.mode || 'song';
     slots[i].effect = entry.effect || null;
     slots[i].includeInShuffle = entry.includeInShuffle || false;
+    slots[i].preserveTimestamp = entry.preserveTimestamp || false;
     slots[i].file = null;
     if (entry.file && entry.file.path) {
       const absPath = await window.electronAPI.resolvePath(projectDir, entry.file.path);
