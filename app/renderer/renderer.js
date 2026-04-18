@@ -708,8 +708,8 @@ function renderSlot(i) {
       });
       shuffleCheck.addEventListener('click', (e) => e.stopPropagation());
       shuffleCheck.addEventListener('pointerdown', (e) => e.stopPropagation());
+      shuffleLabel.appendChild(document.createTextNode('Include in shuffle: '));
       shuffleLabel.appendChild(shuffleCheck);
-      shuffleLabel.appendChild(document.createTextNode(' Include in shuffle?'));
       shuffleLabel.addEventListener('click', (e) => e.stopPropagation());
       shuffleLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
       controlsEl.appendChild(shuffleLabel);
@@ -726,8 +726,8 @@ function renderSlot(i) {
       });
       tsCheck.addEventListener('click', (e) => e.stopPropagation());
       tsCheck.addEventListener('pointerdown', (e) => e.stopPropagation());
+      tsLabel.appendChild(document.createTextNode('Preserve timestamp: '));
       tsLabel.appendChild(tsCheck);
-      tsLabel.appendChild(document.createTextNode(' Preserve timestamp?'));
       tsLabel.addEventListener('click', (e) => e.stopPropagation());
       tsLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
       controlsEl.appendChild(tsLabel);
